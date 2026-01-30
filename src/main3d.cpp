@@ -8,6 +8,7 @@
 #include "entities/FlightController3D.hpp"
 #include "environment/Terrain.hpp"
 #include "rendering/Renderer3D.hpp"
+#include "audio/WindSoundSynthesizer.hpp"
 #include "utils/PerformanceMonitor.hpp"
 
 using namespace ethereal;
@@ -117,6 +118,21 @@ int main() {
     Terrain terrain(terrainConfig);
     terrain.generate(12345);
 
+    // Procedural wind sound synthesizer
+    WindSoundConfig windSoundConfig;
+    windSoundConfig.masterVolume = 0.65f;
+    windSoundConfig.lowWindVolume = 0.5f;
+    windSoundConfig.midWindVolume = 0.6f;
+    windSoundConfig.highWindVolume = 0.35f;
+    windSoundConfig.gustVolume = 0.45f;
+    windSoundConfig.speedInfluence = 0.85f;
+    windSoundConfig.windInfluence = 0.5f;
+    windSoundConfig.altitudeInfluence = 0.35f;
+    windSoundConfig.gustRate = 0.12f;
+    
+    WindSoundSynthesizer windSound(windSoundConfig);
+    windSound.initialize();
+
     PerformanceMonitor perfMonitor;
     float time = 0.0f;
     bool showWindDebug = false;
@@ -150,12 +166,22 @@ int main() {
             character.setPosition(Vector3D(0, 100, 0));
             character.setVelocity(Vector3D::zero());
         }
+        
+        if (IsKeyPressed(KEY_M)) {
+            windSound.setEnabled(!windSound.isEnabled());
+        }
 
         // Camera is locked - no manual orbit
 
         wind.update(dt);
         flight.update(dt, wind);
         character.update(dt);
+        
+        // Update wind sound based on game state
+        float playerSpeed = character.getSpeed();
+        float windIntensity = wind.getWindAt(character.getPosition()).length();
+        float altitude = character.getPosition().y;
+        windSound.update(dt, playerSpeed, windIntensity, altitude);
 
         // Ground collision with terrain
         Vector3D pos = character.getPosition();
@@ -206,6 +232,7 @@ int main() {
         perfMonitor.endFrame();
     }
 
+    windSound.shutdown();
     renderer.shutdown();
     return 0;
 }

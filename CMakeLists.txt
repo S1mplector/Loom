@@ -61,6 +61,7 @@ set(SOURCES_3D
     src/entities/FlightController3D.cpp
     src/environment/Terrain.cpp
     src/rendering/Renderer3D.cpp
+    src/audio/WindSoundSynthesizer.cpp
 )
 
 # 2D Executable (original)
