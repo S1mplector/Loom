@@ -27,14 +27,15 @@ int main() {
     Renderer3D renderer(renderConfig);
     renderer.initialize();
 
+    // Wind disabled by default for calm flight
     WindConfig3D windConfig;
-    windConfig.baseStrength = 40.0f;
-    windConfig.gustStrength = 70.0f;
-    windConfig.turbulence = 0.35f;
+    windConfig.baseStrength = 0.0f;
+    windConfig.gustStrength = 0.0f;
+    windConfig.turbulence = 0.0f;
     windConfig.noiseScale = 0.004f;
     windConfig.timeScale = 0.3f;
-    windConfig.baseDirection = Vector3D(1.0f, 0.0f, 0.3f);
-    windConfig.curlStrength = 0.4f;
+    windConfig.baseDirection = Vector3D(0.0f, 0.0f, 0.0f);
+    windConfig.curlStrength = 0.0f;
     
     WindField3D wind(windConfig);
 
@@ -42,10 +43,11 @@ int main() {
     
     CharacterConfig3D charConfig;
     charConfig.radius = 8.0f;
-    charConfig.maxSpeed = 180.0f;
-    charConfig.acceleration = 250.0f;
-    charConfig.drag = 0.988f;
-    charConfig.trailLength = 25;
+    charConfig.maxSpeed = 220.0f;
+    charConfig.acceleration = 180.0f;
+    charConfig.drag = 0.992f;  // Smoother, less drag
+    charConfig.trailLength = 30;
+    charConfig.rotationSpeed = 3.5f;  // Smoother rotation
     
     Character3D character(startPos, charConfig);
 
@@ -64,20 +66,22 @@ int main() {
     
     Cape3D cape(character.getCapeAttachPoint(), character.getForward() * -1.0f, capeConfig);
 
+    // Smooth, floaty flight like Sky
     FlightConfig3D flightConfig;
-    flightConfig.liftForce = 100.0f;
-    flightConfig.diveForce = 70.0f;
-    flightConfig.horizontalForce = 90.0f;
-    flightConfig.glideRatio = 3.2f;
-    flightConfig.windAssist = 1.1f;
+    flightConfig.liftForce = 80.0f;
+    flightConfig.diveForce = 50.0f;
+    flightConfig.horizontalForce = 70.0f;
+    flightConfig.glideRatio = 4.0f;
+    flightConfig.windAssist = 0.0f;
     
     FlightController3D flight(&character, flightConfig);
 
+    // Camera locked behind player (behind cape)
     FlightCameraConfig cameraConfig;
-    cameraConfig.followDistance = 70.0f;
-    cameraConfig.followHeight = 25.0f;
-    cameraConfig.smoothSpeed = 4.0f;
-    cameraConfig.fov = 65.0f;
+    cameraConfig.followDistance = 45.0f;
+    cameraConfig.followHeight = 12.0f;
+    cameraConfig.smoothSpeed = 8.0f;  // Faster follow for locked feel
+    cameraConfig.fov = 70.0f;
     
     FlightCamera camera(startPos + Vector3D(0, 30, 80), startPos, cameraConfig);
 
@@ -138,15 +142,7 @@ int main() {
             character.setVelocity(Vector3D::zero());
         }
 
-        float mouseWheel = GetMouseWheelMove();
-        if (mouseWheel != 0) {
-            camera.zoom(mouseWheel);
-        }
-        
-        if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
-            Vector2 mouseDelta = GetMouseDelta();
-            camera.orbit(mouseDelta.x * 0.005f, mouseDelta.y * 0.005f);
-        }
+        // Camera is locked - no manual orbit
 
         wind.update(dt);
         flight.update(dt, wind);

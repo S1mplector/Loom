@@ -368,33 +368,54 @@ void Renderer3D::drawAtmosphere(const WindField3D& wind, float dt, const FlightC
 }
 
 void Renderer3D::drawUI(const FlightController3D& flight, const PerformanceMonitor& perf, const FlightCamera& camera) {
-    DrawRectangle(10, 10, 320, 130, {0, 0, 0, 140});
-    DrawRectangleLines(10, 10, 320, 130, {100, 100, 100, 180});
-
-    DrawText(perf.getStatsString().c_str(), 20, 20, 14, WHITE);
-
-    const char* stateText = "";
-    Color stateColor = WHITE;
-    switch (flight.getState()) {
-        case FlightState3D::Gliding:  stateText = "GLIDING";  stateColor = {150, 200, 255, 255}; break;
-        case FlightState3D::Climbing: stateText = "CLIMBING"; stateColor = {255, 200, 150, 255}; break;
-        case FlightState3D::Diving:   stateText = "DIVING";   stateColor = {200, 255, 200, 255}; break;
-        case FlightState3D::Hovering: stateText = "HOVERING"; stateColor = {200, 200, 200, 255}; break;
-        case FlightState3D::Soaring:  stateText = "SOARING";  stateColor = {255, 220, 100, 255}; break;
-    }
-    DrawText(stateText, 20, 45, 20, stateColor);
-
-    DrawText(TextFormat("Altitude: %.0f m", flight.getAltitude()), 20, 75, 14, WHITE);
+    // Sky: Children of the Light style minimal HUD
     
+    // Energy indicator - small arc in bottom left (like Sky's wing energy)
     float energy = flight.getEnergy();
-    DrawRectangle(20, 100, 220, 16, {40, 40, 40, 200});
-    Color energyColor = energy > 30 ? Color{100, 200, 255, 255} : Color{255, 100, 100, 255};
-    DrawRectangle(20, 100, static_cast<int>(energy * 2.2f), 16, energyColor);
-    DrawText("ENERGY", 250, 100, 14, WHITE);
-
-    int bottomY = config.screenHeight - 35;
-    DrawText("WASD: Move | Space: Climb | Shift: Dive | E: Boost | V: Wind Debug", 
-             20, bottomY, 13, {200, 200, 200, 200});
+    int centerX = 60;
+    int centerY = config.screenHeight - 60;
+    float radius = 35.0f;
+    
+    // Outer glow
+    Color glowColor = {255, 255, 255, 30};
+    DrawCircle(centerX, centerY, radius + 8, glowColor);
+    
+    // Background arc
+    DrawCircle(centerX, centerY, radius + 2, {0, 0, 0, 60});
+    
+    // Energy arc - draw as segments
+    float energyAngle = (energy / 100.0f) * 360.0f;
+    Color energyColor = energy > 30 ? Color{255, 255, 255, 200} : Color{255, 180, 120, 220};
+    
+    for (float angle = 0; angle < energyAngle; angle += 5.0f) {
+        float rad1 = (angle - 90) * 0.0174533f;
+        float rad2 = (std::min(angle + 5.0f, energyAngle) - 90) * 0.0174533f;
+        
+        Vector2 p1 = {centerX + std::cos(rad1) * (radius - 3), centerY + std::sin(rad1) * (radius - 3)};
+        Vector2 p2 = {centerX + std::cos(rad2) * (radius - 3), centerY + std::sin(rad2) * (radius - 3)};
+        Vector2 p3 = {centerX + std::cos(rad2) * (radius + 3), centerY + std::sin(rad2) * (radius + 3)};
+        Vector2 p4 = {centerX + std::cos(rad1) * (radius + 3), centerY + std::sin(rad1) * (radius + 3)};
+        
+        DrawTriangle(p1, p2, p3, energyColor);
+        DrawTriangle(p1, p3, p4, energyColor);
+    }
+    
+    // Center orb icon
+    DrawCircle(centerX, centerY, 12, {255, 255, 255, 180});
+    DrawCircle(centerX, centerY, 8, {255, 250, 240, 255});
+    
+    // Minimal altitude indicator - top right, very subtle
+    float altitude = flight.getAltitude();
+    Color altColor = {255, 255, 255, 120};
+    DrawText(TextFormat("%.0f", altitude), config.screenWidth - 70, 25, 20, altColor);
+    
+    // Tiny wing icon next to altitude
+    int wx = config.screenWidth - 95;
+    int wy = 30;
+    DrawTriangle({(float)wx, (float)wy}, {(float)wx-12, (float)wy+8}, {(float)wx-6, (float)wy}, {255, 255, 255, 100});
+    DrawTriangle({(float)wx, (float)wy}, {(float)wx+12, (float)wy+8}, {(float)wx+6, (float)wy}, {255, 255, 255, 100});
+    
+    // Debug info only when TAB held (handled in main)
 }
 
 bool Renderer3D::shouldClose() const {
