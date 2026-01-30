@@ -24,20 +24,42 @@ void FlightController3D::update(float dt, const WindField3D& wind) {
     applyGlidePhysics(dt);
     applyWindEffect(dt, wind);
 
-    Vector3D forward = character->getForward();
-    Vector3D right = character->getRight();
+    // Get current velocity for direction-based movement
+    Vector3D vel = character->getVelocity();
+    float speed = vel.length();
+    
+    // Calculate movement directions based on velocity or default forward
+    Vector3D moveForward;
+    if (speed > 10.0f) {
+        moveForward = vel.normalized();
+    } else {
+        moveForward = character->getForward();
+    }
+    
+    // Keep horizontal component for left/right
+    Vector3D horizontalForward = Vector3D(moveForward.x, 0, moveForward.z);
+    if (horizontalForward.lengthSquared() > 0.01f) {
+        horizontalForward = horizontalForward.normalized();
+    } else {
+        horizontalForward = Vector3D(0, 0, 1);
+    }
+    
+    Vector3D right = Vector3D(0, 1, 0).cross(horizontalForward).normalized();
     Vector3D up(0, 1, 0);
     
     Vector3D force = Vector3D::zero();
 
-    if (inputUp) {
+    // Vertical movement
+    if (inputUp && energy > 0) {
         force += up * config.liftForce;
-        energy -= dt * 15.0f;
+        energy -= dt * 12.0f;
     }
     if (inputDown) {
         force -= up * config.diveForce;
-        energy += dt * 3.0f;
+        energy += dt * 5.0f;
     }
+    
+    // Horizontal movement - relative to current facing
     if (inputLeft) {
         force -= right * config.horizontalForce;
     }
@@ -45,20 +67,26 @@ void FlightController3D::update(float dt, const WindField3D& wind) {
         force += right * config.horizontalForce;
     }
     if (inputForward) {
-        force += forward * config.horizontalForce;
+        force += horizontalForward * config.horizontalForce;
     }
     if (inputBackward) {
-        force -= forward * config.horizontalForce * 0.5f;
+        force -= horizontalForward * config.horizontalForce * 0.4f;
     }
     
+    // Boost
     if (isBoosting && energy > 10.0f) {
-        force += forward * config.horizontalForce * 2.0f;
-        energy -= dt * 30.0f;
+        force += horizontalForward * config.horizontalForce * 2.5f;
+        energy -= dt * 25.0f;
         boostTimer += dt;
-        if (boostTimer > 0.5f) {
+        if (boostTimer > 0.6f) {
             isBoosting = false;
             boostTimer = 0;
         }
+    }
+
+    // Regenerate energy slowly when not climbing
+    if (!inputUp && energy < 100.0f) {
+        energy += dt * 8.0f;
     }
 
     energy = std::clamp(energy, 0.0f, 100.0f);

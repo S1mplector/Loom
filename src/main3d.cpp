@@ -42,12 +42,12 @@ int main() {
     Vector3D startPos(0.0f, 100.0f, 0.0f);
     
     CharacterConfig3D charConfig;
-    charConfig.radius = 8.0f;
-    charConfig.maxSpeed = 220.0f;
-    charConfig.acceleration = 180.0f;
-    charConfig.drag = 0.992f;  // Smoother, less drag
-    charConfig.trailLength = 30;
-    charConfig.rotationSpeed = 3.5f;  // Smoother rotation
+    charConfig.radius = 6.0f;
+    charConfig.maxSpeed = 160.0f;
+    charConfig.acceleration = 120.0f;
+    charConfig.drag = 0.985f;
+    charConfig.trailLength = 20;
+    charConfig.rotationSpeed = 5.0f;
     
     Character3D character(startPos, charConfig);
 
@@ -66,22 +66,22 @@ int main() {
     
     Cape3D cape(character.getCapeAttachPoint(), character.getForward() * -1.0f, capeConfig);
 
-    // Smooth, floaty flight like Sky
+    // Smooth, responsive flight
     FlightConfig3D flightConfig;
-    flightConfig.liftForce = 80.0f;
-    flightConfig.diveForce = 50.0f;
-    flightConfig.horizontalForce = 70.0f;
-    flightConfig.glideRatio = 4.0f;
+    flightConfig.liftForce = 90.0f;
+    flightConfig.diveForce = 40.0f;
+    flightConfig.horizontalForce = 85.0f;
+    flightConfig.glideRatio = 3.5f;
     flightConfig.windAssist = 0.0f;
     
     FlightController3D flight(&character, flightConfig);
 
-    // Camera locked behind player (behind cape)
+    // Camera locked behind player
     FlightCameraConfig cameraConfig;
-    cameraConfig.followDistance = 45.0f;
-    cameraConfig.followHeight = 12.0f;
-    cameraConfig.smoothSpeed = 8.0f;  // Faster follow for locked feel
-    cameraConfig.fov = 70.0f;
+    cameraConfig.followDistance = 55.0f;
+    cameraConfig.followHeight = 18.0f;
+    cameraConfig.smoothSpeed = 6.0f;
+    cameraConfig.fov = 65.0f;
     
     FlightCamera camera(startPos + Vector3D(0, 30, 80), startPos, cameraConfig);
 
@@ -147,6 +147,21 @@ int main() {
         wind.update(dt);
         flight.update(dt, wind);
         character.update(dt);
+
+        // Ground collision with terrain
+        Vector3D pos = character.getPosition();
+        float groundHeight = terrain.getHeightAt(pos.x, pos.z) + character.getRadius() + 2.0f;
+        if (pos.y < groundHeight) {
+            pos.y = groundHeight;
+            character.setPosition(pos);
+            
+            // Dampen vertical velocity on ground contact
+            Vector3D vel = character.getVelocity();
+            if (vel.y < 0) {
+                vel.y *= -0.3f;  // Small bounce
+                character.setVelocity(vel);
+            }
+        }
 
         Vector3D capeAttach = character.getCapeAttachPoint();
         Vector3D capeForward = character.getForward() * -1.0f;
