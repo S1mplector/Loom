@@ -17,12 +17,19 @@ int main() {
     renderConfig.screenWidth = 1280;
     renderConfig.screenHeight = 720;
     
-    // Desert sky colors
-    renderConfig.skyColorTop = {135, 180, 220, 255};
-    renderConfig.skyColorBottom = {245, 235, 220, 255};
-    renderConfig.sunColor = {255, 245, 220, 255};
-    renderConfig.cloudColor = {255, 255, 255, 80};
-    renderConfig.sunDirection = Vector3D(0.4f, 0.9f, 0.2f);
+    // Warm desert sky colors
+    renderConfig.skyColorTop = {120, 170, 215, 255};
+    renderConfig.skyColorBottom = {250, 240, 225, 255};
+    renderConfig.sunColor = {255, 250, 235, 255};
+    renderConfig.cloudColor = {255, 255, 255, 50};
+    renderConfig.sunDirection = Vector3D(0.3f, 0.85f, 0.15f);
+    
+    // Cape colors - warm red/orange gradient
+    renderConfig.capeColorInner = {200, 80, 60, 255};
+    renderConfig.capeColorOuter = {255, 140, 90, 255};
+    
+    // Trail color
+    renderConfig.trailColor = {255, 220, 180, 200};
     
     Renderer3D renderer(renderConfig);
     renderer.initialize();
@@ -52,17 +59,17 @@ int main() {
     Character3D character(startPos, charConfig);
 
     CapeConfig3D capeConfig;
-    capeConfig.segments = 16;
-    capeConfig.width = 12;
-    capeConfig.segmentLength = 5.0f;
-    capeConfig.widthSpacing = 3.5f;
-    capeConfig.stiffness = 0.9f;
-    capeConfig.bendStiffness = 0.2f;
-    capeConfig.gravity = 22.0f;
-    capeConfig.windInfluence = 1.6f;
-    capeConfig.damping = 0.988f;
-    capeConfig.aerodynamicDrag = 0.025f;
-    capeConfig.liftCoefficient = 0.25f;
+    capeConfig.segments = 14;
+    capeConfig.width = 10;
+    capeConfig.segmentLength = 4.5f;
+    capeConfig.widthSpacing = 3.0f;
+    capeConfig.stiffness = 0.85f;
+    capeConfig.bendStiffness = 0.15f;
+    capeConfig.gravity = 18.0f;
+    capeConfig.windInfluence = 0.8f;
+    capeConfig.damping = 0.992f;
+    capeConfig.aerodynamicDrag = 0.02f;
+    capeConfig.liftCoefficient = 0.15f;
     
     Cape3D cape(character.getCapeAttachPoint(), character.getForward() * -1.0f, capeConfig);
 
@@ -85,25 +92,27 @@ int main() {
     
     FlightCamera camera(startPos + Vector3D(0, 30, 80), startPos, cameraConfig);
 
-    // Procedural terrain with low-poly mountains and sand
+    // Procedural terrain - dramatic mountains with desert sand
     TerrainConfig terrainConfig;
-    terrainConfig.gridSize = 80;
-    terrainConfig.tileSize = 15.0f;
-    terrainConfig.maxHeight = 280.0f;
-    terrainConfig.mountainFrequency = 0.006f;
-    terrainConfig.duneFrequency = 0.02f;
-    terrainConfig.mountainPower = 2.8f;
-    terrainConfig.duneAmplitude = 12.0f;
-    terrainConfig.baseHeight = -60.0f;
+    terrainConfig.gridSize = 100;
+    terrainConfig.tileSize = 18.0f;
+    terrainConfig.maxHeight = 350.0f;
+    terrainConfig.mountainFrequency = 0.004f;
+    terrainConfig.duneFrequency = 0.015f;
+    terrainConfig.mountainPower = 2.2f;
+    terrainConfig.duneAmplitude = 18.0f;
+    terrainConfig.mountainOctaves = 6;
+    terrainConfig.duneOctaves = 4;
+    terrainConfig.baseHeight = -80.0f;
     
-    // Sand/desert colors
-    terrainConfig.sandColorLight = {240, 225, 190, 255};
-    terrainConfig.sandColorDark = {210, 185, 145, 255};
-    terrainConfig.rockColorLight = {180, 160, 140, 255};
-    terrainConfig.rockColorDark = {120, 105, 90, 255};
-    terrainConfig.peakColor = {250, 245, 240, 255};
-    terrainConfig.rockThreshold = 0.45f;
-    terrainConfig.peakThreshold = 0.82f;
+    // Warm sand and cool rock colors
+    terrainConfig.sandColorLight = {245, 230, 200, 255};
+    terrainConfig.sandColorDark = {215, 190, 155, 255};
+    terrainConfig.rockColorLight = {175, 155, 140, 255};
+    terrainConfig.rockColorDark = {110, 95, 85, 255};
+    terrainConfig.peakColor = {255, 250, 245, 255};
+    terrainConfig.rockThreshold = 0.40f;
+    terrainConfig.peakThreshold = 0.78f;
     
     Terrain terrain(terrainConfig);
     terrain.generate(12345);

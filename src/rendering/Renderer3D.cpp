@@ -69,22 +69,33 @@ void Renderer3D::endFrame() {
 }
 
 void Renderer3D::drawSky(const FlightCamera& camera, float time) {
+    // Draw gradient background
+    for (int y = 0; y < config.screenHeight; ++y) {
+        float t = static_cast<float>(y) / config.screenHeight;
+        Color lineColor = {
+            (unsigned char)(config.skyColorTop.r + (config.skyColorBottom.r - config.skyColorTop.r) * t),
+            (unsigned char)(config.skyColorTop.g + (config.skyColorBottom.g - config.skyColorTop.g) * t),
+            (unsigned char)(config.skyColorTop.b + (config.skyColorBottom.b - config.skyColorTop.b) * t),
+            255
+        };
+        DrawLine(0, y, config.screenWidth, y, lineColor);
+    }
+    
     BeginMode3D(raylibCamera);
     
     rlDisableDepthMask();
     rlDisableDepthTest();
     
     Vector3D camPos = camera.getPosition();
-    float skyRadius = 800.0f;
     
-    DrawSphere({camPos.x, camPos.y + skyRadius * 0.3f, camPos.z}, skyRadius, config.skyColorTop);
-    
+    // Sun with layered glow
     Vector3D sunDir = config.sunDirection.normalized();
     Vector3D sunPos = camPos + sunDir * 700.0f;
     
-    Color sunGlow = {255, 250, 230, 60};
-    DrawSphere({sunPos.x, sunPos.y, sunPos.z}, 80.0f, sunGlow);
-    DrawSphere({sunPos.x, sunPos.y, sunPos.z}, 40.0f, config.sunColor);
+    DrawSphere({sunPos.x, sunPos.y, sunPos.z}, 120.0f, {255, 250, 235, 15});
+    DrawSphere({sunPos.x, sunPos.y, sunPos.z}, 80.0f, {255, 250, 230, 30});
+    DrawSphere({sunPos.x, sunPos.y, sunPos.z}, 50.0f, {255, 252, 240, 60});
+    DrawSphere({sunPos.x, sunPos.y, sunPos.z}, 30.0f, config.sunColor);
     
     rlEnableDepthTest();
     rlEnableDepthMask();
@@ -191,21 +202,52 @@ void Renderer3D::drawClouds(const FlightCamera& camera, float time) {
     
     Vector3D camPos = camera.getPosition();
     
-    for (int i = 0; i < 15; ++i) {
-        float angle = i * 0.42f + time * 0.02f;
-        float radius = 200.0f + (i % 3) * 100.0f;
-        float height = 150.0f + (i % 4) * 40.0f;
+    // Layered cloud system - distant horizon clouds
+    for (int layer = 0; layer < 3; ++layer) {
+        float layerHeight = 200.0f + layer * 80.0f;
+        float layerRadius = 400.0f + layer * 150.0f;
+        int cloudCount = 12 - layer * 2;
         
+        for (int i = 0; i < cloudCount; ++i) {
+            float angle = i * (6.28f / cloudCount) + time * (0.01f - layer * 0.003f) + layer * 0.5f;
+            
+            float x = camPos.x + std::cos(angle) * layerRadius;
+            float z = camPos.z + std::sin(angle) * layerRadius;
+            float y = layerHeight + std::sin(angle * 2.0f + time * 0.1f) * 15.0f;
+            
+            // Cloud opacity decreases with distance/height
+            unsigned char alpha = (unsigned char)(40 - layer * 10);
+            Color cloudCol = {255, 255, 255, alpha};
+            
+            // Fluffy cloud cluster
+            float baseSize = 45.0f + (i % 3) * 20.0f - layer * 5.0f;
+            
+            // Main body
+            DrawSphere({x, y, z}, baseSize, cloudCol);
+            
+            // Puffs around main body
+            for (int p = 0; p < 5; ++p) {
+                float pAngle = p * 1.25f + i * 0.7f;
+                float pDist = baseSize * 0.6f;
+                float px = x + std::cos(pAngle) * pDist;
+                float pz = z + std::sin(pAngle) * pDist;
+                float py = y + std::sin(pAngle * 2) * baseSize * 0.3f;
+                float pSize = baseSize * (0.5f + (p % 3) * 0.15f);
+                DrawSphere({px, py, pz}, pSize, cloudCol);
+            }
+        }
+    }
+    
+    // Wispy high-altitude clouds
+    for (int i = 0; i < 8; ++i) {
+        float angle = i * 0.78f + time * 0.005f;
+        float radius = 500.0f + (i % 2) * 100.0f;
         float x = camPos.x + std::cos(angle) * radius;
         float z = camPos.z + std::sin(angle) * radius;
+        float y = 350.0f + (i % 3) * 30.0f;
         
-        Color cloudCol = config.cloudColor;
-        cloudCol.a = 60 + (i % 3) * 20;
-        
-        float cloudSize = 30.0f + (i % 5) * 15.0f;
-        DrawSphere({x, height, z}, cloudSize, cloudCol);
-        DrawSphere({x + cloudSize * 0.7f, height - 5, z + cloudSize * 0.3f}, cloudSize * 0.8f, cloudCol);
-        DrawSphere({x - cloudSize * 0.5f, height + 5, z - cloudSize * 0.4f}, cloudSize * 0.7f, cloudCol);
+        Color wispyCol = {255, 255, 255, 15};
+        DrawSphere({x, y, z}, 60.0f + (i % 2) * 20.0f, wispyCol);
     }
     
     EndMode3D();
@@ -224,13 +266,17 @@ void Renderer3D::drawCapeMesh(const Cape3D& cape) {
             const Vector3D& p3 = cape.getParticle(row + 1, col).position;
             const Vector3D& p4 = cape.getParticle(row + 1, col + 1).position;
             
+            // Rich gradient from warm inner to cool outer edges
+            float colRatio = std::abs((col - width/2.0f) / (width/2.0f));
+            
             Color color = {
                 (unsigned char)(config.capeColorInner.r + (config.capeColorOuter.r - config.capeColorInner.r) * rowRatio),
-                (unsigned char)(config.capeColorInner.g + (config.capeColorOuter.g - config.capeColorInner.g) * rowRatio),
-                (unsigned char)(config.capeColorInner.b + (config.capeColorOuter.b - config.capeColorInner.b) * rowRatio),
-                (unsigned char)(255 - rowRatio * 30)
+                (unsigned char)(config.capeColorInner.g + (config.capeColorOuter.g - config.capeColorInner.g) * rowRatio * 0.8f),
+                (unsigned char)(config.capeColorInner.b + (config.capeColorOuter.b - config.capeColorInner.b) * rowRatio * 1.2f),
+                (unsigned char)(250 - rowRatio * 40 - colRatio * 20)
             };
             
+            // Front face
             DrawTriangle3D(
                 {p1.x, p1.y, p1.z},
                 {p3.x, p3.y, p3.z},
@@ -244,10 +290,11 @@ void Renderer3D::drawCapeMesh(const Cape3D& cape) {
                 color
             );
             
+            // Back face - darker, more saturated
             Color backColor = {
-                (unsigned char)(color.r * 0.7f),
-                (unsigned char)(color.g * 0.7f),
-                (unsigned char)(color.b * 0.7f),
+                (unsigned char)(color.r * 0.55f),
+                (unsigned char)(color.g * 0.5f),
+                (unsigned char)(color.b * 0.6f),
                 color.a
             };
             DrawTriangle3D(
@@ -278,18 +325,26 @@ void Renderer3D::drawCharacter(const Character3D& character) {
     Vector3D pos = character.getPosition();
     float radius = character.getRadius();
     
-    Color glowColor = {255, 250, 240, 30};
-    DrawSphere({pos.x, pos.y, pos.z}, radius * 1.8f, glowColor);
-    DrawSphere({pos.x, pos.y, pos.z}, radius * 1.4f, glowColor);
+    // Animated flicker for candlelight effect
+    static float flickerTime = 0;
+    flickerTime += GetFrameTime() * 8.0f;
+    float flicker = 1.0f + std::sin(flickerTime * 3.7f) * 0.1f 
+                        + std::sin(flickerTime * 7.3f) * 0.05f
+                        + std::sin(flickerTime * 13.1f) * 0.03f;
     
-    DrawSphere({pos.x, pos.y, pos.z}, radius, config.characterColor);
+    // Large outer glow - warm orange ambient
+    DrawSphere({pos.x, pos.y, pos.z}, radius * 5.0f * flicker, {255, 150, 50, 40});
+    DrawSphere({pos.x, pos.y, pos.z}, radius * 3.5f * flicker, {255, 170, 70, 70});
+    DrawSphere({pos.x, pos.y, pos.z}, radius * 2.5f * flicker, {255, 200, 100, 100});
+    DrawSphere({pos.x, pos.y, pos.z}, radius * 1.8f * flicker, {255, 220, 150, 150});
     
-    Color innerColor = {255, 252, 248, 255};
-    DrawSphere({pos.x, pos.y, pos.z}, radius * 0.7f, innerColor);
+    // Main flame body - bright warm yellow/orange
+    DrawSphere({pos.x, pos.y, pos.z}, radius * 1.2f, {255, 230, 180, 255});
+    DrawSphere({pos.x, pos.y, pos.z}, radius, {255, 240, 200, 255});
     
-    Vector3D forward = character.getForward();
-    Vector3D eyePos = pos + forward * (radius * 0.7f) + Vector3D(0, radius * 0.2f, 0);
-    DrawSphere({eyePos.x, eyePos.y, eyePos.z}, radius * 0.15f, {50, 70, 90, 255});
+    // Inner hot core - bright white/yellow
+    DrawSphere({pos.x, pos.y, pos.z}, radius * 0.6f, {255, 255, 230, 255});
+    DrawSphere({pos.x, pos.y, pos.z}, radius * 0.3f, {255, 255, 255, 255});
     
     EndMode3D();
 }
@@ -298,10 +353,22 @@ void Renderer3D::drawTrail(const Character3D& character) {
     BeginMode3D(raylibCamera);
     
     const auto& trail = character.getTrail();
-    for (const auto& point : trail) {
-        Color trailCol = config.trailColor;
-        trailCol.a = static_cast<unsigned char>(point.alpha * 180);
+    for (size_t i = 0; i < trail.size(); ++i) {
+        const auto& point = trail[i];
+        float t = static_cast<float>(i) / std::max(1.0f, static_cast<float>(trail.size()));
+        
+        // Warm ember trail - fades from bright yellow to deep orange
+        unsigned char r = 255;
+        unsigned char g = (unsigned char)(220 - t * 100);
+        unsigned char b = (unsigned char)(150 - t * 100);
+        unsigned char a = static_cast<unsigned char>(point.alpha * 200);
+        
+        Color trailCol = {r, g, b, a};
         DrawSphere({point.position.x, point.position.y, point.position.z}, point.size, trailCol);
+        
+        // Glow around each ember
+        Color glowCol = {255, 200, 120, (unsigned char)(a / 3)};
+        DrawSphere({point.position.x, point.position.y, point.position.z}, point.size * 2.0f, glowCol);
     }
     
     EndMode3D();
@@ -337,19 +404,34 @@ void Renderer3D::updateParticles(float dt, const WindField3D& wind, const Flight
     Vector3D camPos = camera.getPosition();
     
     for (auto& p : particles) {
-        Vector3D windForce = wind.getWindAt(p.position) * 0.005f;
-        p.velocity = p.velocity * 0.98f + windForce;
-        p.position += p.velocity * dt * 60.0f;
+        // Gentle floating motion with wind influence
+        Vector3D windForce = wind.getWindAt(p.position) * 0.003f;
+        
+        // Add slight upward drift and swirl
+        float swirl = std::sin(p.lifetime * 2.0f + p.position.x * 0.01f) * 0.5f;
+        Vector3D drift(swirl, 0.3f, std::cos(p.lifetime * 1.5f) * 0.3f);
+        
+        p.velocity = p.velocity * 0.96f + windForce + drift * dt;
+        p.position += p.velocity * dt * 40.0f;
         p.lifetime += dt;
         
+        // Fade based on lifetime
+        p.alpha = std::max(0.0f, 0.4f - p.lifetime * 0.02f);
+        
         float dist = (p.position - camPos).length();
-        if (dist > 600.0f || p.position.y < -60.0f) {
+        if (dist > 500.0f || p.position.y < -60.0f || p.alpha <= 0.0f) {
+            // Respawn around camera
+            float angle = GetRandomValue(0, 628) * 0.01f;
+            float spawnDist = GetRandomValue(50, 300);
             p.position = camPos + Vector3D(
-                GetRandomValue(-400, 400),
-                GetRandomValue(0, 250),
-                GetRandomValue(-400, 400)
+                std::cos(angle) * spawnDist,
+                GetRandomValue(-30, 150),
+                std::sin(angle) * spawnDist
             );
             p.velocity = Vector3D::zero();
+            p.lifetime = 0;
+            p.alpha = 0.3f + GetRandomValue(0, 20) * 0.01f;
+            p.size = 0.8f + GetRandomValue(0, 15) * 0.1f;
         }
     }
 }
@@ -359,9 +441,22 @@ void Renderer3D::drawAtmosphere(const WindField3D& wind, float dt, const FlightC
     
     BeginMode3D(raylibCamera);
     
+    Vector3D camPos = camera.getPosition();
+    
     for (const auto& p : particles) {
-        Color particleColor = {255, 255, 255, (unsigned char)(p.alpha * 255)};
-        DrawSphere({p.position.x, p.position.y, p.position.z}, p.size, particleColor);
+        // Distance fade
+        float dist = (p.position - camPos).length();
+        float distFade = 1.0f - std::min(dist / 400.0f, 1.0f);
+        
+        // Warm dust color with slight variation
+        unsigned char alpha = (unsigned char)(p.alpha * distFade * 180);
+        Color particleColor = {255, 250, 240, alpha};
+        
+        if (alpha > 5) {
+            DrawSphere({p.position.x, p.position.y, p.position.z}, p.size, particleColor);
+            // Subtle glow
+            DrawSphere({p.position.x, p.position.y, p.position.z}, p.size * 2.0f, {255, 240, 200, (unsigned char)(alpha / 4)});
+        }
     }
     
     EndMode3D();

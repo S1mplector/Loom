@@ -24,30 +24,29 @@ void FlightController3D::update(float dt, const WindField3D& wind) {
     applyGlidePhysics(dt);
     applyWindEffect(dt, wind);
 
-    // Get current velocity for direction-based movement
-    Vector3D vel = character->getVelocity();
-    float speed = vel.length();
-    
-    // Calculate movement directions based on velocity or default forward
-    Vector3D moveForward;
-    if (speed > 10.0f) {
-        moveForward = vel.normalized();
-    } else {
-        moveForward = character->getForward();
-    }
-    
-    // Keep horizontal component for left/right
-    Vector3D horizontalForward = Vector3D(moveForward.x, 0, moveForward.z);
+    // Get character's facing direction
+    Vector3D forward = character->getForward();
+    Vector3D horizontalForward = Vector3D(forward.x, 0, forward.z);
     if (horizontalForward.lengthSquared() > 0.01f) {
         horizontalForward = horizontalForward.normalized();
     } else {
         horizontalForward = Vector3D(0, 0, 1);
     }
     
-    Vector3D right = Vector3D(0, 1, 0).cross(horizontalForward).normalized();
     Vector3D up(0, 1, 0);
-    
     Vector3D force = Vector3D::zero();
+    
+    // Turn rate scales with speed for responsive feel
+    float speed = character->getVelocity().length();
+    float turnRate = 2.5f + std::min(speed / 80.0f, 1.5f);
+
+    // A/D rotate the player's heading (yaw)
+    if (inputLeft) {
+        character->rotateYaw(turnRate * dt);
+    }
+    if (inputRight) {
+        character->rotateYaw(-turnRate * dt);
+    }
 
     // Vertical movement
     if (inputUp && energy > 0) {
@@ -59,13 +58,7 @@ void FlightController3D::update(float dt, const WindField3D& wind) {
         energy += dt * 5.0f;
     }
     
-    // Horizontal movement - relative to current facing
-    if (inputLeft) {
-        force -= right * config.horizontalForce;
-    }
-    if (inputRight) {
-        force += right * config.horizontalForce;
-    }
+    // W/S thrust in facing direction
     if (inputForward) {
         force += horizontalForward * config.horizontalForce;
     }

@@ -35,11 +35,23 @@ void Character3D::update(float dt) {
 }
 
 void Character3D::updateRotation(float dt) {
+    // Smoothly interpolate to target rotation (set by rotateYaw or externally)
+    // Only apply slight pitch based on vertical velocity for visual tilt
     float speed = velocity.length();
     
-    if (speed > 5.0f) {
-        Vector3D forward = velocity.normalized();
-        targetRotation = Quaternion::lookRotation(forward, Vector3D(0, 1, 0));
+    if (speed > 20.0f) {
+        // Add subtle pitch tilt based on climb/dive
+        float pitch = std::atan2(-velocity.y, std::sqrt(velocity.x * velocity.x + velocity.z * velocity.z));
+        pitch = std::clamp(pitch * 0.3f, -0.4f, 0.4f); // Limit tilt angle
+        
+        // Get current yaw from target rotation
+        Vector3D fwd = targetRotation * Vector3D(0, 0, 1);
+        float yaw = std::atan2(fwd.x, fwd.z);
+        
+        // Reconstruct target with yaw preserved and pitch added
+        Quaternion yawQ = Quaternion::fromAxisAngle(Vector3D(0, 1, 0), yaw);
+        Quaternion pitchQ = Quaternion::fromAxisAngle(Vector3D(1, 0, 0), pitch);
+        targetRotation = yawQ * pitchQ;
     }
     
     rotation = Quaternion::slerp(rotation, targetRotation, config.rotationSpeed * dt);
@@ -86,6 +98,12 @@ void Character3D::setVelocity(const Vector3D& vel) {
 
 void Character3D::applyForce(const Vector3D& force) {
     acceleration += force;
+}
+
+void Character3D::rotateYaw(float angle) {
+    Quaternion yawRotation = Quaternion::fromAxisAngle(Vector3D(0, 1, 0), angle);
+    targetRotation = yawRotation * targetRotation;
+    rotation = yawRotation * rotation;
 }
 
 Vector3D Character3D::getCapeAttachPoint() const {

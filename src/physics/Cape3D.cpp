@@ -153,15 +153,31 @@ void Cape3D::update(float dt, const WindField3D& wind) {
             auto& particle = particles[getIndex(row, col)];
             if (particle.pinned) continue;
 
+            // Gravity with mass
             particle.applyForce(gravity * particle.mass);
 
+            // Wind force increases toward cape end
             Vector3D windForce = wind.getWindAt(particle.position) * config.windInfluence;
             float rowFactor = static_cast<float>(row) / config.segments;
-            windForce *= (0.4f + rowFactor * 0.6f);
+            windForce *= (0.3f + rowFactor * 0.7f);
             particle.applyForce(windForce);
 
-            Vector3D dragForce = particle.getVelocity() * -0.3f;
-            particle.applyForce(dragForce);
+            // Movement-based billowing - cape flows behind when moving
+            Vector3D moveForce = attachVelocity * (-0.08f * rowFactor);
+            particle.applyForce(moveForce);
+            
+            // Subtle lateral sway based on movement
+            float sway = std::sin(row * 0.5f + dt * 3.0f) * attachVelocity.length() * 0.002f;
+            Vector3D swayForce = currentForward.cross(Vector3D(0, 1, 0)) * sway;
+            particle.applyForce(swayForce);
+
+            // Air resistance / drag
+            Vector3D vel = particle.getVelocity();
+            float speed = vel.length();
+            if (speed > 0.1f) {
+                Vector3D dragForce = vel.normalized() * (-0.15f * speed * speed * 0.01f);
+                particle.applyForce(dragForce);
+            }
         }
     }
 
