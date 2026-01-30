@@ -242,45 +242,50 @@ void EnvironmentRenderer::renderTerrain(const Terrain& terrain, const FlightCame
 }
 
 Color EnvironmentRenderer::getTerrainColor(float height, float steepness) {
-    // Smooth color palette
+    // Dark night palette - cool blues and purples
     if (height > 0.82f) {
+        // Snow peaks - slightly luminous in moonlight
         float t = (height - 0.82f) / 0.18f;
         return {
-            (unsigned char)(225 + t * 30),
-            (unsigned char)(230 + t * 25),
-            (unsigned char)(240 + t * 15),
+            (unsigned char)(80 + t * 40),
+            (unsigned char)(90 + t * 50),
+            (unsigned char)(110 + t * 50),
             255
         };
     } else if (height > 0.55f) {
+        // Rocky areas - dark grey-blue
         float t = (height - 0.55f) / 0.27f;
         return {
-            (unsigned char)(145 + t * 80),
-            (unsigned char)(135 + t * 95),
-            (unsigned char)(125 + t * 115),
+            (unsigned char)(40 + t * 40),
+            (unsigned char)(45 + t * 45),
+            (unsigned char)(55 + t * 55),
             255
         };
     } else if (height > 0.3f) {
+        // Mid slopes - dark purple-grey
         float t = (height - 0.3f) / 0.25f;
         return {
-            (unsigned char)(165 - t * 20),
-            (unsigned char)(155 - t * 20),
-            (unsigned char)(120 + t * 5),
+            (unsigned char)(35 + t * 5),
+            (unsigned char)(30 + t * 15),
+            (unsigned char)(40 + t * 15),
             255
         };
     } else if (height > 0.12f) {
+        // Lower areas - dark earth tones
         float t = (height - 0.12f) / 0.18f;
         return {
-            (unsigned char)(190 - t * 25),
-            (unsigned char)(185 - t * 30),
-            (unsigned char)(145 - t * 25),
+            (unsigned char)(30 + t * 5),
+            (unsigned char)(28 + t * 2),
+            (unsigned char)(35 + t * 5),
             255
         };
     } else {
+        // Lowest - very dark
         float t = height / 0.12f;
         return {
-            (unsigned char)(170 + t * 20),
-            (unsigned char)(190 - t * 5),
-            (unsigned char)(150 - t * 5),
+            (unsigned char)(20 + t * 10),
+            (unsigned char)(22 + t * 6),
+            (unsigned char)(28 + t * 7),
             255
         };
     }
@@ -446,16 +451,16 @@ Color EnvironmentRenderer::applyFog(Color color, float distance, float height) {
     float fogFactor = std::clamp((distance - config.fogStart) / (config.fogEnd - config.fogStart), 0.0f, 1.0f);
     fogFactor = fogFactor * fogFactor;
     
-    // Height affects fog color slightly
+    // Night fog - dark blue/purple
     float heightFactor = std::clamp(height / 250.0f, 0.0f, 1.0f);
     Color fogCol = {
-        (unsigned char)(config.fogColor.r - heightFactor * 15),
-        (unsigned char)(config.fogColor.g - heightFactor * 8),
-        (unsigned char)(config.fogColor.b + heightFactor * 8),
+        (unsigned char)(15 + heightFactor * 5),
+        (unsigned char)(18 + heightFactor * 7),
+        (unsigned char)(30 + heightFactor * 10),
         255
     };
     
-    return blendColors(color, fogCol, fogFactor * 0.85f);
+    return blendColors(color, fogCol, fogFactor * 0.9f);
 }
 
 float EnvironmentRenderer::calculateLighting(const Vector3D& normal) {

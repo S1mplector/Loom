@@ -80,16 +80,24 @@ int main() {
     EnergyBeingRenderer energyBeing(energyConfig);
     energyBeing.initialize();
     
-    // Environment renderer
+    // Environment renderer - NIGHT SCENE
     EnvironmentConfig envConfig;
-    envConfig.skyColorZenith = {100, 150, 200, 255};
-    envConfig.skyColorHorizon = {240, 225, 200, 255};
-    envConfig.sunDirection = Vector3D(0.35f, 0.75f, 0.2f);
-    envConfig.fogStart = 180.0f;
-    envConfig.fogEnd = 1100.0f;
-    envConfig.cloudLayers = 3;
-    envConfig.cloudsPerLayer = 7;
-    envConfig.atmosphereParticles = 180;
+    envConfig.skyColorZenith = {5, 8, 18, 255};       // Deep dark blue
+    envConfig.skyColorHorizon = {15, 22, 40, 255};    // Slightly lighter at horizon
+    envConfig.fogStart = 200.0f;
+    envConfig.fogEnd = 900.0f;
+    envConfig.fogColor = {12, 15, 28, 255};           // Dark blue fog
+    envConfig.cloudLayers = 2;
+    envConfig.cloudsPerLayer = 5;
+    envConfig.atmosphereParticles = 120;
+    
+    // Moon settings
+    envConfig.enableMoon = true;
+    envConfig.moonDirection = Vector3D(-0.4f, 0.65f, 0.4f);
+    envConfig.moonSize = 30.0f;
+    envConfig.moonGlowSize = 100.0f;
+    envConfig.starCount = 400;
+    envConfig.starBrightness = 0.95f;
     
     EnvironmentRenderer envRenderer(envConfig);
     envRenderer.initialize();
@@ -257,11 +265,11 @@ int main() {
 
         renderer.beginFrame(camera);
         
-        // Use new environment renderer
+        // Use new environment renderer - NIGHT SCENE
         envRenderer.renderSky(camera, time);
+        envRenderer.renderMoonAndStars(camera, time);
         envRenderer.renderDistantMountains(camera, time);
         envRenderer.renderTerrain(terrain, camera);
-        envRenderer.renderClouds(camera, time);
         envRenderer.renderAtmosphere(camera, dt);
         
         renderer.drawWindField(wind, character.getPosition());
