@@ -2,12 +2,13 @@
 #include "core/Vector3D.hpp"
 #include "core/Quaternion.hpp"
 #include "physics/WindField3D.hpp"
-#include "physics/Cape3D.hpp"
 #include "entities/Character3D.hpp"
 #include "entities/Camera3D.hpp"
 #include "entities/FlightController3D.hpp"
 #include "environment/Terrain.hpp"
 #include "rendering/Renderer3D.hpp"
+#include "rendering/EnergyBeingRenderer.hpp"
+#include "rendering/EnvironmentRenderer.hpp"
 #include "audio/WindSoundSynthesizer.hpp"
 #include "utils/PerformanceMonitor.hpp"
 
@@ -59,20 +60,39 @@ int main() {
     
     Character3D character(startPos, charConfig);
 
-    CapeConfig3D capeConfig;
-    capeConfig.segments = 14;
-    capeConfig.width = 10;
-    capeConfig.segmentLength = 4.5f;
-    capeConfig.widthSpacing = 3.0f;
-    capeConfig.stiffness = 0.85f;
-    capeConfig.bendStiffness = 0.15f;
-    capeConfig.gravity = 18.0f;
-    capeConfig.windInfluence = 0.8f;
-    capeConfig.damping = 0.992f;
-    capeConfig.aerodynamicDrag = 0.02f;
-    capeConfig.liftCoefficient = 0.15f;
+    // Energy Being renderer (procedural orbs that merge/separate)
+    EnergyBeingConfig energyConfig;
+    energyConfig.coreOrbs = 5;
+    energyConfig.midOrbs = 8;
+    energyConfig.outerOrbs = 12;
+    energyConfig.coreRadius = 2.2f;
+    energyConfig.midRadius = 1.6f;
+    energyConfig.outerRadius = 1.0f;
+    energyConfig.coreSpread = 2.5f;
+    energyConfig.midSpread = 6.0f;
+    energyConfig.outerSpread = 10.0f;
+    energyConfig.mergeSpeed = 5.0f;
+    energyConfig.separateSpeed = 7.0f;
+    energyConfig.rotationSpeed = 1.8f;
+    energyConfig.flowSpeed = 2.2f;
+    energyConfig.glowIntensity = 0.85f;
     
-    Cape3D cape(character.getCapeAttachPoint(), character.getForward() * -1.0f, capeConfig);
+    EnergyBeingRenderer energyBeing(energyConfig);
+    energyBeing.initialize();
+    
+    // Environment renderer
+    EnvironmentConfig envConfig;
+    envConfig.skyColorZenith = {100, 150, 200, 255};
+    envConfig.skyColorHorizon = {240, 225, 200, 255};
+    envConfig.sunDirection = Vector3D(0.35f, 0.75f, 0.2f);
+    envConfig.fogStart = 180.0f;
+    envConfig.fogEnd = 1100.0f;
+    envConfig.cloudLayers = 3;
+    envConfig.cloudsPerLayer = 7;
+    envConfig.atmosphereParticles = 180;
+    
+    EnvironmentRenderer envRenderer(envConfig);
+    envRenderer.initialize();
 
     // Smooth, responsive flight with mouse controls
     FlightConfig3D flightConfig;
@@ -227,25 +247,34 @@ int main() {
             }
         }
 
-        Vector3D capeAttach = character.getCapeAttachPoint();
-        Vector3D capeForward = character.getForward() * -1.0f;
-        cape.setAttachPoint(capeAttach, capeForward);
-        cape.setAttachVelocity(character.getVelocity());
-        cape.update(dt, wind);
-        cape.solveConstraints(6);
+        // Update energy being
+        energyBeing.update(dt, character);
+        
+        // Update environment
+        envRenderer.update(dt, camera.getPosition(), wind);
 
         camera.followTarget(character.getPosition(), character.getVelocity(), dt);
 
         renderer.beginFrame(camera);
         
-        renderer.drawSky(camera, time);
-        renderer.drawTerrain(terrain, camera);
-        renderer.drawClouds(camera, time);
-        renderer.drawAtmosphere(wind, dt, camera);
+        // Use new environment renderer
+        envRenderer.renderSky(camera, time);
+        envRenderer.renderDistantMountains(camera, time);
+        envRenderer.renderTerrain(terrain, camera);
+        envRenderer.renderClouds(camera, time);
+        envRenderer.renderAtmosphere(camera, dt);
+        
         renderer.drawWindField(wind, character.getPosition());
-        renderer.drawTrail(character);
-        renderer.drawCape(cape);
-        renderer.drawCharacter(character);
+        
+        // Render energy being (replaces character + cape)
+        BeginMode3D({
+            {camera.getPosition().x, camera.getPosition().y, camera.getPosition().z},
+            {camera.getTarget().x, camera.getTarget().y, camera.getTarget().z},
+            {0, 1, 0}, 65.0f, CAMERA_PERSPECTIVE
+        });
+        energyBeing.render(character);
+        EndMode3D();
+        
         renderer.drawUI(flight, perfMonitor, camera);
 
         if (IsKeyDown(KEY_TAB)) {

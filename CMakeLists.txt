@@ -61,6 +61,8 @@ set(SOURCES_3D
     src/entities/FlightController3D.cpp
     src/environment/Terrain.cpp
     src/rendering/Renderer3D.cpp
+    src/rendering/EnergyBeingRenderer.cpp
+    src/rendering/EnvironmentRenderer.cpp
     src/audio/WindSoundSynthesizer.cpp
 )
 

@@ -365,82 +365,84 @@ float WindSoundSynthesizer::synthesizeSample() {
     // Get modulation values
     float slowMod = lfoSlow.sine() * 0.5f + 0.5f;      // 0 to 1
     float medMod = lfoMedium.triangle() * 0.5f + 0.5f; // 0 to 1
-    float fastMod = lfoFast.sine() * 0.3f + 0.7f;      // 0.4 to 1
-    float randomMod = lfoSlow.smoothRandom() * 0.2f + 0.8f;  // 0.6 to 1
+    float fastMod = lfoFast.sine() * 0.2f + 0.8f;      // 0.6 to 1 (less aggressive)
+    float randomMod = lfoSlow.smoothRandom() * 0.15f + 0.85f;  // 0.7 to 1
     
     // Advance LFOs
     lfoSlow.advance();
     lfoMedium.advance();
     lfoFast.advance();
     
-    // Base intensity with modulation
+    // Base intensity with modulation - smoother overall
     float intensity = currentIntensity * slowMod * randomMod;
+    intensity = std::sqrt(intensity);  // Softer response curve
     
     // ========================================
     // LAYER 1: Deep rumble (low frequencies)
     // ========================================
     float lowNoise = noiseGenLow.brown();
     lowNoise = lowPassLow.process(lowNoise);
-    float lowLayer = lowNoise * config.lowWindVolume * intensity * 0.7f;
+    float lowLayer = lowNoise * config.lowWindVolume * intensity * 0.6f;
     
     // ========================================
-    // LAYER 2: Main woosh (mid frequencies)
+    // LAYER 2: Main woosh (mid frequencies) - smoother
     // ========================================
     float midNoise = noiseGenMid.pink();
     midNoise = lowPassMid.process(midNoise);
     midNoise = highPassMid.process(midNoise);
-    // Add intensity-based brightness
-    float midBrightness = 1.0f + intensity * 0.5f;
-    float midLayer = midNoise * config.midWindVolume * intensity * medMod * midBrightness;
+    // Gentler brightness scaling
+    float midBrightness = 1.0f + intensity * 0.3f;
+    float midLayer = midNoise * config.midWindVolume * intensity * medMod * midBrightness * 0.85f;
     
     // ========================================
-    // LAYER 3: High whistle (high frequencies)
+    // LAYER 3: High whistle (MUCH softer)
     // ========================================
-    float highNoise = noiseGenHigh.white();
+    float highNoise = noiseGenHigh.pink();  // Pink instead of white for softer highs
     highNoise = highPassHigh.process(highNoise);
     highNoise = lowPassHigh.process(highNoise);
-    // High frequencies more prominent at high intensity
-    float highIntensity = intensity * intensity;  // Exponential response
-    float highLayer = highNoise * config.highWindVolume * highIntensity * fastMod * 0.6f;
+    // Very gentle high frequency response
+    float highIntensity = std::pow(intensity, 3.0f);  // Cubic - only present at high speeds
+    float highLayer = highNoise * config.highWindVolume * highIntensity * fastMod * 0.25f;  // Much quieter
     
     // ========================================
-    // LAYER 4: Gusts (dynamic bursts)
+    // LAYER 4: Gusts (dynamic bursts) - gentler
     // ========================================
     float gustEnvelope = gustGen.generate();
     gustGen.update();
     
     float gustNoise = noiseGenGust.pink();
     gustNoise = gustFilter.process(gustNoise);
-    float gustLayer = gustNoise * gustEnvelope * config.gustVolume;
+    float gustLayer = gustNoise * gustEnvelope * config.gustVolume * 0.7f;
     
     // ========================================
-    // LAYER 5: Speed-dependent whoosh
+    // LAYER 5: Speed-dependent whoosh - smoother
     // ========================================
     float speedWhoosh = 0.0f;
-    if (playerSpeedNorm > 0.3f) {
-        float whooshNoise = noiseGenMid.filtered(0.1f + playerSpeedNorm * 0.3f, 0.5f);
-        float whooshIntensity = (playerSpeedNorm - 0.3f) / 0.7f;
-        whooshIntensity *= whooshIntensity;
-        speedWhoosh = whooshNoise * whooshIntensity * 0.4f * fastMod;
+    if (playerSpeedNorm > 0.35f) {
+        float whooshNoise = noiseGenMid.filtered(0.08f + playerSpeedNorm * 0.2f, 0.3f);  // Lower resonance
+        float whooshIntensity = (playerSpeedNorm - 0.35f) / 0.65f;
+        whooshIntensity = std::sqrt(whooshIntensity);  // Softer curve
+        speedWhoosh = whooshNoise * whooshIntensity * 0.3f * medMod;  // Use medium mod, not fast
     }
     
     // ========================================
-    // LAYER 6: Altitude-dependent thin air
+    // LAYER 6: Altitude-dependent thin air - very subtle
     // ========================================
     float altitudeLayer = 0.0f;
-    if (altitudeNorm > 0.4f) {
-        float thinAirNoise = noiseGenHigh.white() * 0.3f;
-        float altIntensity = (altitudeNorm - 0.4f) / 0.6f;
-        altitudeLayer = thinAirNoise * altIntensity * 0.25f * (1.0f + slowMod * 0.3f);
+    if (altitudeNorm > 0.5f) {
+        float thinAirNoise = noiseGenHigh.pink() * 0.2f;  // Pink, not white
+        float altIntensity = (altitudeNorm - 0.5f) / 0.5f;
+        altIntensity = std::sqrt(altIntensity);
+        altitudeLayer = thinAirNoise * altIntensity * 0.15f * (1.0f + slowMod * 0.2f);
     }
     
     // ========================================
-    // Mix all layers
+    // Mix all layers with gentler balance
     // ========================================
     float mix = lowLayer + midLayer + highLayer + gustLayer + speedWhoosh + altitudeLayer;
     
-    // Soft saturation to prevent harsh clipping
-    mix = std::tanh(mix * 0.8f);
+    // Softer saturation curve
+    mix = std::tanh(mix * 0.6f);  // Less aggressive saturation
     
     // Update sample time
     sampleTime += 1.0f / config.sampleRate;
