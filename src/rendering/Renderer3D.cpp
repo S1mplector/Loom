@@ -140,7 +140,12 @@ void Renderer3D::drawTerrain(const Terrain& terrain, const FlightCamera& camera)
     const auto& terrainConfig = terrain.getConfig();
     
     Vector3D camPos = camera.getPosition();
-    float viewDistance = 800.0f;
+    Vector3D sunDir = config.sunDirection.normalized();
+    float viewDistance = 1000.0f;
+    float nearDistance = 100.0f;
+    
+    // === LOW-POLY SMOOTH AESTHETIC ===
+    // Each triangle gets smooth color based on lighting + height + distance
     
     for (size_t i = 0; i < indices.size(); i += 3) {
         const auto& v0 = vertices[indices[i]];
@@ -152,45 +157,115 @@ void Renderer3D::drawTerrain(const Terrain& terrain, const FlightCamera& camera)
         
         if (dist > viewDistance) continue;
         
-        Color c0 = terrain.getColorAt(v0.position.x, v0.position.z, v0.height);
-        Color c1 = terrain.getColorAt(v1.position.x, v1.position.z, v1.height);
-        Color c2 = terrain.getColorAt(v2.position.x, v2.position.z, v2.height);
+        // Calculate face normal for flat shading (low-poly look)
+        Vector3D edge1 = v1.position - v0.position;
+        Vector3D edge2 = v2.position - v0.position;
+        Vector3D faceNormal = edge1.cross(edge2).normalized();
         
-        float fogFactor = std::min(dist / viewDistance, 1.0f);
-        fogFactor = fogFactor * fogFactor;
+        // === Lighting calculations ===
+        // Diffuse lighting from sun
+        float diffuse = std::max(0.0f, faceNormal.dot(sunDir));
+        diffuse = 0.4f + diffuse * 0.6f;  // Ambient + diffuse
         
-        auto applyFog = [&](Color c) -> Color {
-            return {
-                (unsigned char)(c.r + (config.skyColorBottom.r - c.r) * fogFactor * 0.7f),
-                (unsigned char)(c.g + (config.skyColorBottom.g - c.g) * fogFactor * 0.7f),
-                (unsigned char)(c.b + (config.skyColorBottom.b - c.b) * fogFactor * 0.7f),
+        // Soft rim lighting for silhouette enhancement
+        Vector3D toCamera = (camPos - center).normalized();
+        float rim = 1.0f - std::max(0.0f, faceNormal.dot(toCamera));
+        rim = std::pow(rim, 2.0f) * 0.15f;
+        
+        // Height-based color with smooth gradients
+        float avgHeight = (v0.height + v1.height + v2.height) / 3.0f;
+        float normalizedHeight = (avgHeight - terrainConfig.baseHeight) / terrainConfig.maxHeight;
+        normalizedHeight = std::clamp(normalizedHeight, 0.0f, 1.0f);
+        
+        // === Smooth color palette (low-poly aesthetic) ===
+        Color baseColor;
+        
+        if (normalizedHeight > 0.85f) {
+            // Snow caps - soft white with slight blue tint
+            float t = (normalizedHeight - 0.85f) / 0.15f;
+            baseColor = {
+                (unsigned char)(220 + t * 35),
+                (unsigned char)(225 + t * 30),
+                (unsigned char)(235 + t * 20),
                 255
             };
-        };
+        } else if (normalizedHeight > 0.6f) {
+            // Rocky slopes - warm gray transitioning to snow
+            float t = (normalizedHeight - 0.6f) / 0.25f;
+            baseColor = {
+                (unsigned char)(140 + t * 80),
+                (unsigned char)(130 + t * 95),
+                (unsigned char)(120 + t * 115),
+                255
+            };
+        } else if (normalizedHeight > 0.35f) {
+            // Mid elevation - earthy tones
+            float t = (normalizedHeight - 0.35f) / 0.25f;
+            baseColor = {
+                (unsigned char)(160 - t * 20),
+                (unsigned char)(145 - t * 15),
+                (unsigned char)(110 + t * 10),
+                255
+            };
+        } else if (normalizedHeight > 0.15f) {
+            // Lower slopes - warm sand/grass blend
+            float t = (normalizedHeight - 0.15f) / 0.2f;
+            baseColor = {
+                (unsigned char)(180 - t * 20),
+                (unsigned char)(175 - t * 30),
+                (unsigned char)(130 - t * 20),
+                255
+            };
+        } else {
+            // Valley floor - soft green-sand
+            float t = normalizedHeight / 0.15f;
+            baseColor = {
+                (unsigned char)(165 + t * 15),
+                (unsigned char)(180 - t * 5),
+                (unsigned char)(140 - t * 10),
+                255
+            };
+        }
         
-        c0 = applyFog(c0);
-        c1 = applyFog(c1);
-        c2 = applyFog(c2);
+        // Apply diffuse lighting
+        float lightFactor = diffuse + rim;
+        baseColor.r = (unsigned char)std::clamp((int)(baseColor.r * lightFactor), 0, 255);
+        baseColor.g = (unsigned char)std::clamp((int)(baseColor.g * lightFactor), 0, 255);
+        baseColor.b = (unsigned char)std::clamp((int)(baseColor.b * lightFactor), 0, 255);
         
-        Color avgColor = {
-            (unsigned char)((c0.r + c1.r + c2.r) / 3),
-            (unsigned char)((c0.g + c1.g + c2.g) / 3),
-            (unsigned char)((c0.b + c1.b + c2.b) / 3),
+        // === Smooth distance fog ===
+        float fogStart = 200.0f;
+        float fogFactor = std::clamp((dist - fogStart) / (viewDistance - fogStart), 0.0f, 1.0f);
+        fogFactor = fogFactor * fogFactor;  // Quadratic falloff for smoothness
+        
+        // Fog color gradient based on height (atmospheric perspective)
+        float heightFog = std::clamp(center.y / 200.0f, 0.0f, 1.0f);
+        Color fogColor = {
+            (unsigned char)(config.skyColorBottom.r - heightFog * 20),
+            (unsigned char)(config.skyColorBottom.g - heightFog * 10),
+            (unsigned char)(config.skyColorBottom.b + heightFog * 10),
             255
         };
         
-        DrawTriangle3D(
-            {v0.position.x, v0.position.y, v0.position.z},
-            {v1.position.x, v1.position.y, v1.position.z},
-            {v2.position.x, v2.position.y, v2.position.z},
-            avgColor
-        );
+        Color finalColor = {
+            (unsigned char)(baseColor.r + (fogColor.r - baseColor.r) * fogFactor * 0.85f),
+            (unsigned char)(baseColor.g + (fogColor.g - baseColor.g) * fogFactor * 0.85f),
+            (unsigned char)(baseColor.b + (fogColor.b - baseColor.b) * fogFactor * 0.85f),
+            255
+        };
         
+        // Draw both sides of the triangle
+        DrawTriangle3D(
+            {v0.position.x, v0.position.y, v0.position.z},
+            {v1.position.x, v1.position.y, v1.position.z},
+            {v2.position.x, v2.position.y, v2.position.z},
+            finalColor
+        );
         DrawTriangle3D(
             {v0.position.x, v0.position.y, v0.position.z},
             {v2.position.x, v2.position.y, v2.position.z},
             {v1.position.x, v1.position.y, v1.position.z},
-            avgColor
+            finalColor
         );
     }
     
@@ -202,52 +277,84 @@ void Renderer3D::drawClouds(const FlightCamera& camera, float time) {
     
     Vector3D camPos = camera.getPosition();
     
-    // Layered cloud system - distant horizon clouds
-    for (int layer = 0; layer < 3; ++layer) {
-        float layerHeight = 200.0f + layer * 80.0f;
-        float layerRadius = 400.0f + layer * 150.0f;
-        int cloudCount = 12 - layer * 2;
+    // === LAYER 1: Distant horizon clouds (soft, painterly) ===
+    for (int layer = 0; layer < 4; ++layer) {
+        float layerHeight = 180.0f + layer * 60.0f;
+        float layerRadius = 350.0f + layer * 120.0f;
+        int cloudCount = 10 - layer;
         
         for (int i = 0; i < cloudCount; ++i) {
-            float angle = i * (6.28f / cloudCount) + time * (0.01f - layer * 0.003f) + layer * 0.5f;
+            float angle = i * (6.28318f / cloudCount) + time * (0.008f - layer * 0.002f) + layer * 0.8f;
             
             float x = camPos.x + std::cos(angle) * layerRadius;
             float z = camPos.z + std::sin(angle) * layerRadius;
-            float y = layerHeight + std::sin(angle * 2.0f + time * 0.1f) * 15.0f;
+            float y = layerHeight + std::sin(angle * 1.5f + time * 0.08f) * 12.0f;
             
-            // Cloud opacity decreases with distance/height
-            unsigned char alpha = (unsigned char)(40 - layer * 10);
-            Color cloudCol = {255, 255, 255, alpha};
+            // Soft gradient opacity - inner clouds brighter
+            float layerFade = 1.0f - layer * 0.2f;
+            unsigned char baseAlpha = (unsigned char)(35 * layerFade);
             
-            // Fluffy cloud cluster
-            float baseSize = 45.0f + (i % 3) * 20.0f - layer * 5.0f;
+            // Warm-tinted clouds (sunset feel)
+            unsigned char r = 255;
+            unsigned char g = (unsigned char)(252 - layer * 3);
+            unsigned char b = (unsigned char)(248 - layer * 8);
             
-            // Main body
-            DrawSphere({x, y, z}, baseSize, cloudCol);
+            float baseSize = 50.0f + (i % 4) * 15.0f - layer * 8.0f;
             
-            // Puffs around main body
-            for (int p = 0; p < 5; ++p) {
-                float pAngle = p * 1.25f + i * 0.7f;
-                float pDist = baseSize * 0.6f;
+            // Multi-layered cloud puff for volume
+            // Core (brightest)
+            DrawSphere({x, y, z}, baseSize * 0.6f, {r, g, b, (unsigned char)(baseAlpha * 1.2f)});
+            // Mid layer
+            DrawSphere({x, y, z}, baseSize * 0.85f, {r, g, b, (unsigned char)(baseAlpha * 0.7f)});
+            // Outer soft edge
+            DrawSphere({x, y, z}, baseSize * 1.1f, {r, g, b, (unsigned char)(baseAlpha * 0.3f)});
+            
+            // Organic puffs around main body
+            for (int p = 0; p < 4; ++p) {
+                float pAngle = p * 1.57f + i * 0.9f + time * 0.02f;
+                float pDist = baseSize * 0.55f;
                 float px = x + std::cos(pAngle) * pDist;
                 float pz = z + std::sin(pAngle) * pDist;
-                float py = y + std::sin(pAngle * 2) * baseSize * 0.3f;
-                float pSize = baseSize * (0.5f + (p % 3) * 0.15f);
-                DrawSphere({px, py, pz}, pSize, cloudCol);
+                float py = y + std::sin(pAngle * 2.5f) * baseSize * 0.25f;
+                float pSize = baseSize * (0.4f + (p % 3) * 0.12f);
+                
+                DrawSphere({px, py, pz}, pSize * 0.7f, {r, g, b, (unsigned char)(baseAlpha * 0.8f)});
+                DrawSphere({px, py, pz}, pSize, {r, g, b, (unsigned char)(baseAlpha * 0.4f)});
             }
         }
     }
     
-    // Wispy high-altitude clouds
-    for (int i = 0; i < 8; ++i) {
-        float angle = i * 0.78f + time * 0.005f;
-        float radius = 500.0f + (i % 2) * 100.0f;
+    // === LAYER 2: Mid-altitude fluffy clouds ===
+    for (int i = 0; i < 6; ++i) {
+        float angle = i * 1.047f + time * 0.012f + 0.5f;
+        float radius = 280.0f + (i % 3) * 60.0f;
         float x = camPos.x + std::cos(angle) * radius;
         float z = camPos.z + std::sin(angle) * radius;
-        float y = 350.0f + (i % 3) * 30.0f;
+        float y = 140.0f + (i % 2) * 25.0f + std::sin(time * 0.15f + i) * 8.0f;
         
-        Color wispyCol = {255, 255, 255, 15};
-        DrawSphere({x, y, z}, 60.0f + (i % 2) * 20.0f, wispyCol);
+        float size = 35.0f + (i % 3) * 12.0f;
+        
+        // Brighter, more defined clouds
+        DrawSphere({x, y, z}, size * 0.5f, {255, 253, 250, 50});
+        DrawSphere({x, y, z}, size * 0.75f, {255, 252, 248, 30});
+        DrawSphere({x, y, z}, size, {255, 250, 245, 15});
+    }
+    
+    // === LAYER 3: High-altitude wisps (cirrus-like) ===
+    for (int i = 0; i < 12; ++i) {
+        float angle = i * 0.524f + time * 0.004f;
+        float radius = 450.0f + (i % 3) * 80.0f;
+        float x = camPos.x + std::cos(angle) * radius;
+        float z = camPos.z + std::sin(angle) * radius;
+        float y = 320.0f + (i % 4) * 25.0f;
+        
+        // Very soft, stretched wisps
+        float wispSize = 70.0f + (i % 2) * 30.0f;
+        
+        // Slight blue tint for high altitude
+        DrawSphere({x, y, z}, wispSize * 0.4f, {250, 252, 255, 18});
+        DrawSphere({x, y, z}, wispSize * 0.7f, {248, 250, 255, 10});
+        DrawSphere({x, y, z}, wispSize, {245, 248, 255, 5});
     }
     
     EndMode3D();
@@ -260,68 +367,139 @@ void Renderer3D::drawCapeMesh(const Cape3D& cape) {
     static float time = 0;
     time += GetFrameTime();
     
-    // Draw flowing light trails along each column (strand)
+    // === LAYER 1: Ethereal ribbon mesh with smooth gradients ===
+    for (int row = 0; row < segments - 1; ++row) {
+        float rowRatio = static_cast<float>(row) / (segments - 1);
+        float nextRowRatio = static_cast<float>(row + 1) / (segments - 1);
+        
+        for (int col = 0; col < width - 1; ++col) {
+            float colRatio = static_cast<float>(col) / (width - 1);
+            float colOffset = (colRatio - 0.5f) * 2.0f;
+            
+            const Vector3D& p00 = cape.getParticle(row, col).position;
+            const Vector3D& p01 = cape.getParticle(row, col + 1).position;
+            const Vector3D& p10 = cape.getParticle(row + 1, col).position;
+            const Vector3D& p11 = cape.getParticle(row + 1, col + 1).position;
+            
+            // Flowing wave pattern across the cape
+            float wavePhase = time * 1.5f + colRatio * 3.14159f + rowRatio * 2.0f;
+            float wave = 0.7f + 0.3f * std::sin(wavePhase);
+            
+            // Aurora-like color shifting
+            float hueShift = std::sin(time * 0.8f + colRatio * 2.0f) * 0.5f + 0.5f;
+            float edgeFade = 1.0f - std::abs(colOffset) * 0.3f;
+            float tipFade = 1.0f - rowRatio * 0.5f;
+            float intensity = wave * edgeFade * tipFade;
+            
+            // Gradient: warm gold → soft rose → ethereal blue at tips
+            unsigned char r = (unsigned char)(255 - rowRatio * 40 * hueShift);
+            unsigned char g = (unsigned char)(220 - rowRatio * 80 + hueShift * 30);
+            unsigned char b = (unsigned char)(180 + rowRatio * 60 + hueShift * 40);
+            unsigned char alpha = (unsigned char)(180 * intensity);
+            
+            Color quadColor = {r, g, b, alpha};
+            
+            // Draw smooth quad as two triangles
+            DrawTriangle3D(
+                {p00.x, p00.y, p00.z},
+                {p10.x, p10.y, p10.z},
+                {p01.x, p01.y, p01.z},
+                quadColor
+            );
+            DrawTriangle3D(
+                {p01.x, p01.y, p01.z},
+                {p10.x, p10.y, p10.z},
+                {p11.x, p11.y, p11.z},
+                quadColor
+            );
+            // Back faces
+            DrawTriangle3D(
+                {p00.x, p00.y, p00.z},
+                {p01.x, p01.y, p01.z},
+                {p10.x, p10.y, p10.z},
+                quadColor
+            );
+            DrawTriangle3D(
+                {p01.x, p01.y, p01.z},
+                {p11.x, p11.y, p11.z},
+                {p10.x, p10.y, p10.z},
+                quadColor
+            );
+        }
+    }
+    
+    // === LAYER 2: Glowing edge highlights ===
+    for (int row = 0; row < segments; ++row) {
+        float rowRatio = static_cast<float>(row) / (segments - 1);
+        
+        // Left and right edge glow
+        for (int edge = 0; edge < 2; ++edge) {
+            int col = (edge == 0) ? 0 : width - 1;
+            const Vector3D& p = cape.getParticle(row, col).position;
+            
+            float pulse = 0.6f + 0.4f * std::sin(time * 3.0f + rowRatio * 6.0f + edge * 3.14159f);
+            float tipFade = 1.0f - rowRatio * 0.6f;
+            float glowIntensity = pulse * tipFade;
+            
+            float glowSize = (1.8f - rowRatio * 0.8f) * glowIntensity;
+            unsigned char glowAlpha = (unsigned char)(140 * glowIntensity);
+            
+            // Inner bright core
+            DrawSphere({p.x, p.y, p.z}, glowSize * 0.5f, {255, 250, 240, glowAlpha});
+            // Outer soft glow
+            DrawSphere({p.x, p.y, p.z}, glowSize * 1.5f, {255, 220, 180, (unsigned char)(glowAlpha / 3)});
+        }
+    }
+    
+    // === LAYER 3: Trailing tip sparkles ===
+    int lastRow = segments - 1;
     for (int col = 0; col < width; ++col) {
         float colRatio = static_cast<float>(col) / (width - 1);
-        float colOffset = (colRatio - 0.5f) * 2.0f; // -1 to 1
+        const Vector3D& tipPos = cape.getParticle(lastRow, col).position;
+        const Vector3D& prevPos = cape.getParticle(lastRow - 1, col).position;
         
-        // Each strand has slight timing offset for organic flow
-        float strandPhase = col * 0.3f + time * 2.0f;
+        // Velocity-based sparkle intensity
+        Vector3D tipVel = tipPos - prevPos;
+        float speed = tipVel.length() * 60.0f;
+        float sparkleIntensity = std::min(speed * 0.15f, 1.0f);
+        
+        float sparklePhase = time * 8.0f + col * 1.7f;
+        float sparkle = (std::sin(sparklePhase) * 0.5f + 0.5f) * sparkleIntensity;
+        
+        if (sparkle > 0.2f) {
+            unsigned char alpha = (unsigned char)(200 * sparkle);
+            float size = 1.0f + sparkle * 1.5f;
+            
+            // Bright sparkle
+            DrawSphere({tipPos.x, tipPos.y, tipPos.z}, size, {255, 255, 255, alpha});
+            // Warm glow halo
+            DrawSphere({tipPos.x, tipPos.y, tipPos.z}, size * 2.5f, {255, 200, 150, (unsigned char)(alpha / 4)});
+        }
+    }
+    
+    // === LAYER 4: Flowing energy strands (subtle) ===
+    for (int col = 1; col < width - 1; col += 2) {
+        float colRatio = static_cast<float>(col) / (width - 1);
+        float strandPhase = time * 2.5f + col * 0.5f;
         
         for (int row = 0; row < segments - 1; ++row) {
             float rowRatio = static_cast<float>(row) / (segments - 1);
             
             const Vector3D& p1 = cape.getParticle(row, col).position;
             const Vector3D& p2 = cape.getParticle(row + 1, col).position;
-            
-            // Intensity pulses along strand like flowing energy
-            float pulse = 0.6f + 0.4f * std::sin(strandPhase - rowRatio * 4.0f);
-            
-            // Fade out toward edges and tips
-            float edgeFade = 1.0f - std::abs(colOffset) * 0.4f;
-            float tipFade = 1.0f - rowRatio * 0.7f;
-            float intensity = pulse * edgeFade * tipFade;
-            
-            // Color: bright warm yellow at base → soft orange → fading amber at tips
-            unsigned char r = 255;
-            unsigned char g = (unsigned char)(255 - rowRatio * 120);
-            unsigned char b = (unsigned char)(200 - rowRatio * 180);
-            
-            // Core glow - bright center of each light strand
-            float coreSize = (2.5f - rowRatio * 1.5f) * intensity;
-            unsigned char coreAlpha = (unsigned char)(200 * intensity);
-            DrawSphere({p1.x, p1.y, p1.z}, coreSize, {r, g, b, coreAlpha});
-            
-            // Outer glow halo
-            float glowSize = coreSize * 2.5f;
-            unsigned char glowAlpha = (unsigned char)(80 * intensity);
-            DrawSphere({p1.x, p1.y, p1.z}, glowSize, {255, (unsigned char)(g * 0.8f), (unsigned char)(b * 0.5f), glowAlpha});
-            
-            // Connecting light between particles (like flowing energy)
-            if (row < segments - 2) {
-                Vector3D mid = (p1 + p2) * 0.5f;
-                float midSize = coreSize * 0.7f;
-                unsigned char midAlpha = (unsigned char)(120 * intensity);
-                DrawSphere({mid.x, mid.y, mid.z}, midSize, {r, g, b, midAlpha});
-            }
-        }
-    }
-    
-    // Add subtle cross-connections for ethereal web effect
-    for (int row = 1; row < segments; row += 2) {
-        float rowRatio = static_cast<float>(row) / (segments - 1);
-        float rowIntensity = (1.0f - rowRatio) * 0.5f;
-        
-        for (int col = 0; col < width - 1; ++col) {
-            const Vector3D& p1 = cape.getParticle(row, col).position;
-            const Vector3D& p2 = cape.getParticle(row, col + 1).position;
             Vector3D mid = (p1 + p2) * 0.5f;
             
-            float pulse = 0.5f + 0.5f * std::sin(time * 3.0f + row * 0.5f + col * 0.3f);
-            unsigned char alpha = (unsigned char)(40 * rowIntensity * pulse);
+            // Energy pulse traveling down the strand
+            float energyPos = std::fmod(strandPhase, 1.0f);
+            float distToEnergy = std::abs(rowRatio - energyPos);
+            float energyIntensity = std::max(0.0f, 1.0f - distToEnergy * 4.0f);
             
-            if (alpha > 5) {
-                DrawSphere({mid.x, mid.y, mid.z}, 1.5f, {255, 200, 120, alpha});
+            if (energyIntensity > 0.1f) {
+                float tipFade = 1.0f - rowRatio * 0.5f;
+                unsigned char alpha = (unsigned char)(120 * energyIntensity * tipFade);
+                float size = 1.2f * energyIntensity;
+                
+                DrawSphere({mid.x, mid.y, mid.z}, size, {255, 240, 200, alpha});
             }
         }
     }
@@ -339,26 +517,64 @@ void Renderer3D::drawCharacter(const Character3D& character) {
     Vector3D pos = character.getPosition();
     float radius = character.getRadius();
     
-    // Animated flicker for candlelight effect
-    static float flickerTime = 0;
-    flickerTime += GetFrameTime() * 8.0f;
-    float flicker = 1.0f + std::sin(flickerTime * 3.7f) * 0.1f 
-                        + std::sin(flickerTime * 7.3f) * 0.05f
-                        + std::sin(flickerTime * 13.1f) * 0.03f;
+    static float time = 0;
+    time += GetFrameTime();
     
-    // Large outer glow - warm orange ambient
-    DrawSphere({pos.x, pos.y, pos.z}, radius * 5.0f * flicker, {255, 150, 50, 40});
-    DrawSphere({pos.x, pos.y, pos.z}, radius * 3.5f * flicker, {255, 170, 70, 70});
-    DrawSphere({pos.x, pos.y, pos.z}, radius * 2.5f * flicker, {255, 200, 100, 100});
-    DrawSphere({pos.x, pos.y, pos.z}, radius * 1.8f * flicker, {255, 220, 150, 150});
+    // === Breathing pulse animation ===
+    float breathe = 1.0f + std::sin(time * 2.0f) * 0.08f;
+    float heartbeat = 1.0f + std::sin(time * 4.5f) * 0.03f * (std::sin(time * 0.5f) > 0 ? 1.0f : 0.0f);
+    float pulse = breathe * heartbeat;
     
-    // Main flame body - bright warm yellow/orange
-    DrawSphere({pos.x, pos.y, pos.z}, radius * 1.2f, {255, 230, 180, 255});
-    DrawSphere({pos.x, pos.y, pos.z}, radius, {255, 240, 200, 255});
+    // === LAYER 1: Ambient light field (very large, subtle) ===
+    DrawSphere({pos.x, pos.y, pos.z}, radius * 8.0f * pulse, {255, 240, 220, 15});
+    DrawSphere({pos.x, pos.y, pos.z}, radius * 6.0f * pulse, {255, 230, 200, 25});
     
-    // Inner hot core - bright white/yellow
-    DrawSphere({pos.x, pos.y, pos.z}, radius * 0.6f, {255, 255, 230, 255});
-    DrawSphere({pos.x, pos.y, pos.z}, radius * 0.3f, {255, 255, 255, 255});
+    // === LAYER 2: Ethereal aura rings ===
+    for (int ring = 0; ring < 3; ++ring) {
+        float ringPhase = time * (1.5f - ring * 0.3f) + ring * 2.094f;
+        float ringPulse = 0.8f + 0.2f * std::sin(ringPhase);
+        float ringSize = radius * (3.5f - ring * 0.6f) * ringPulse * pulse;
+        unsigned char ringAlpha = (unsigned char)(50 - ring * 12);
+        
+        // Warm gradient from inner to outer
+        unsigned char r = 255;
+        unsigned char g = (unsigned char)(200 + ring * 20);
+        unsigned char b = (unsigned char)(150 + ring * 30);
+        
+        DrawSphere({pos.x, pos.y, pos.z}, ringSize, {r, g, b, ringAlpha});
+    }
+    
+    // === LAYER 3: Core glow layers ===
+    DrawSphere({pos.x, pos.y, pos.z}, radius * 2.2f * pulse, {255, 220, 180, 80});
+    DrawSphere({pos.x, pos.y, pos.z}, radius * 1.6f * pulse, {255, 235, 200, 140});
+    DrawSphere({pos.x, pos.y, pos.z}, radius * 1.2f * pulse, {255, 245, 220, 200});
+    
+    // === LAYER 4: Solid character body ===
+    DrawSphere({pos.x, pos.y, pos.z}, radius * 0.9f, {255, 250, 240, 255});
+    
+    // === LAYER 5: Inner light core ===
+    float coreFlicker = 1.0f + std::sin(time * 6.0f) * 0.1f + std::sin(time * 11.0f) * 0.05f;
+    DrawSphere({pos.x, pos.y, pos.z}, radius * 0.5f * coreFlicker, {255, 255, 250, 255});
+    DrawSphere({pos.x, pos.y, pos.z}, radius * 0.25f * coreFlicker, {255, 255, 255, 255});
+    
+    // === LAYER 6: Orbiting light wisps ===
+    for (int i = 0; i < 4; ++i) {
+        float orbitSpeed = 1.2f + i * 0.3f;
+        float orbitRadius = radius * (2.0f + i * 0.5f);
+        float orbitTilt = i * 0.4f;
+        float orbitPhase = time * orbitSpeed + i * 1.57f;
+        
+        float wx = pos.x + std::cos(orbitPhase) * orbitRadius;
+        float wy = pos.y + std::sin(orbitPhase * 0.7f + orbitTilt) * orbitRadius * 0.4f;
+        float wz = pos.z + std::sin(orbitPhase) * orbitRadius;
+        
+        float wispPulse = 0.6f + 0.4f * std::sin(orbitPhase * 2.0f);
+        float wispSize = radius * 0.3f * wispPulse;
+        unsigned char wispAlpha = (unsigned char)(150 * wispPulse);
+        
+        DrawSphere({wx, wy, wz}, wispSize, {255, 250, 230, wispAlpha});
+        DrawSphere({wx, wy, wz}, wispSize * 2.0f, {255, 230, 180, (unsigned char)(wispAlpha / 3)});
+    }
     
     EndMode3D();
 }
@@ -366,23 +582,96 @@ void Renderer3D::drawCharacter(const Character3D& character) {
 void Renderer3D::drawTrail(const Character3D& character) {
     BeginMode3D(raylibCamera);
     
+    static float time = 0;
+    time += GetFrameTime();
+    
     const auto& trail = character.getTrail();
-    for (size_t i = 0; i < trail.size(); ++i) {
+    size_t trailSize = trail.size();
+    
+    if (trailSize < 2) {
+        EndMode3D();
+        return;
+    }
+    
+    // === LAYER 1: Smooth ribbon trail ===
+    for (size_t i = 0; i < trailSize - 1; ++i) {
+        const auto& p1 = trail[i];
+        const auto& p2 = trail[i + 1];
+        float t1 = static_cast<float>(i) / trailSize;
+        float t2 = static_cast<float>(i + 1) / trailSize;
+        
+        // Smooth color gradient: bright gold → warm orange → soft rose → fading lavender
+        auto getTrailColor = [&](float t, float alpha) -> Color {
+            unsigned char r = (unsigned char)(255 - t * 30);
+            unsigned char g = (unsigned char)(240 - t * 100);
+            unsigned char b = (unsigned char)(200 - t * 60 + t * t * 80);
+            unsigned char a = (unsigned char)(alpha * (1.0f - t * 0.7f) * 255);
+            return {r, g, b, a};
+        };
+        
+        Color c1 = getTrailColor(t1, p1.alpha);
+        Color c2 = getTrailColor(t2, p2.alpha);
+        Color avgColor = {
+            (unsigned char)((c1.r + c2.r) / 2),
+            (unsigned char)((c1.g + c2.g) / 2),
+            (unsigned char)((c1.b + c2.b) / 2),
+            (unsigned char)((c1.a + c2.a) / 2)
+        };
+        
+        // Draw connecting ribbon segment
+        float size1 = p1.size * (1.0f - t1 * 0.5f);
+        float size2 = p2.size * (1.0f - t2 * 0.5f);
+        float avgSize = (size1 + size2) * 0.5f;
+        
+        Vector3D mid = (p1.position + p2.position) * 0.5f;
+        DrawSphere({mid.x, mid.y, mid.z}, avgSize * 0.8f, avgColor);
+    }
+    
+    // === LAYER 2: Glowing core particles ===
+    for (size_t i = 0; i < trailSize; ++i) {
         const auto& point = trail[i];
-        float t = static_cast<float>(i) / std::max(1.0f, static_cast<float>(trail.size()));
+        float t = static_cast<float>(i) / trailSize;
         
-        // Warm ember trail - fades from bright yellow to deep orange
+        // Core brightness decreases along trail
+        float coreBrightness = (1.0f - t * 0.6f) * point.alpha;
+        if (coreBrightness < 0.1f) continue;
+        
         unsigned char r = 255;
-        unsigned char g = (unsigned char)(220 - t * 100);
-        unsigned char b = (unsigned char)(150 - t * 100);
-        unsigned char a = static_cast<unsigned char>(point.alpha * 200);
+        unsigned char g = (unsigned char)(250 - t * 60);
+        unsigned char b = (unsigned char)(230 - t * 80);
+        unsigned char coreAlpha = (unsigned char)(200 * coreBrightness);
         
-        Color trailCol = {r, g, b, a};
-        DrawSphere({point.position.x, point.position.y, point.position.z}, point.size, trailCol);
+        float coreSize = point.size * (1.0f - t * 0.4f);
+        DrawSphere({point.position.x, point.position.y, point.position.z}, coreSize, {r, g, b, coreAlpha});
         
-        // Glow around each ember
-        Color glowCol = {255, 200, 120, (unsigned char)(a / 3)};
-        DrawSphere({point.position.x, point.position.y, point.position.z}, point.size * 2.0f, glowCol);
+        // Outer glow halo
+        unsigned char glowAlpha = (unsigned char)(80 * coreBrightness);
+        DrawSphere({point.position.x, point.position.y, point.position.z}, coreSize * 2.2f, {255, 220, 180, glowAlpha});
+    }
+    
+    // === LAYER 3: Dissipating sparkles at trail end ===
+    for (size_t i = trailSize / 2; i < trailSize; ++i) {
+        const auto& point = trail[i];
+        float t = static_cast<float>(i) / trailSize;
+        
+        // Sparkle effect increases toward end
+        float sparkleChance = (t - 0.5f) * 2.0f;
+        float sparklePhase = time * 10.0f + i * 2.3f;
+        float sparkle = std::sin(sparklePhase) * 0.5f + 0.5f;
+        
+        if (sparkle * sparkleChance > 0.4f && point.alpha > 0.2f) {
+            float sparkleIntensity = sparkle * sparkleChance * point.alpha;
+            unsigned char alpha = (unsigned char)(180 * sparkleIntensity);
+            float size = 0.5f + sparkleIntensity * 1.0f;
+            
+            // Offset sparkle position slightly for variation
+            float ox = std::sin(sparklePhase * 1.3f) * point.size * 0.5f;
+            float oy = std::cos(sparklePhase * 1.7f) * point.size * 0.5f;
+            float oz = std::sin(sparklePhase * 0.9f) * point.size * 0.5f;
+            
+            DrawSphere({point.position.x + ox, point.position.y + oy, point.position.z + oz}, 
+                       size, {255, 255, 240, alpha});
+        }
     }
     
     EndMode3D();
@@ -453,23 +742,77 @@ void Renderer3D::updateParticles(float dt, const WindField3D& wind, const Flight
 void Renderer3D::drawAtmosphere(const WindField3D& wind, float dt, const FlightCamera& camera) {
     updateParticles(dt, wind, camera);
     
+    static float time = 0;
+    time += dt;
+    
     BeginMode3D(raylibCamera);
     
     Vector3D camPos = camera.getPosition();
     
-    for (const auto& p : particles) {
-        // Distance fade
+    for (size_t idx = 0; idx < particles.size(); ++idx) {
+        const auto& p = particles[idx];
+        
+        // Distance-based fade with smooth falloff
         float dist = (p.position - camPos).length();
-        float distFade = 1.0f - std::min(dist / 400.0f, 1.0f);
+        float distFade = 1.0f - std::pow(std::min(dist / 450.0f, 1.0f), 1.5f);
         
-        // Warm dust color with slight variation
-        unsigned char alpha = (unsigned char)(p.alpha * distFade * 180);
-        Color particleColor = {255, 250, 240, alpha};
+        if (distFade < 0.05f) continue;
         
-        if (alpha > 5) {
-            DrawSphere({p.position.x, p.position.y, p.position.z}, p.size, particleColor);
-            // Subtle glow
-            DrawSphere({p.position.x, p.position.y, p.position.z}, p.size * 2.0f, {255, 240, 200, (unsigned char)(alpha / 4)});
+        // Particle type determines behavior and appearance
+        float typePhase = time * 2.0f + idx * 0.7f;
+        
+        if (p.type == 0) {
+            // === Type 0: Floating dust motes ===
+            float pulse = 0.7f + 0.3f * std::sin(typePhase * 0.5f);
+            unsigned char alpha = (unsigned char)(p.alpha * distFade * 160 * pulse);
+            
+            if (alpha > 8) {
+                // Warm golden dust
+                Color dustColor = {255, 248, 235, alpha};
+                DrawSphere({p.position.x, p.position.y, p.position.z}, p.size * 0.8f, dustColor);
+                
+                // Soft glow halo
+                DrawSphere({p.position.x, p.position.y, p.position.z}, p.size * 1.8f, 
+                          {255, 240, 210, (unsigned char)(alpha / 4)});
+            }
+        } 
+        else if (p.type == 1) {
+            // === Type 1: Ethereal firefly sparkles ===
+            float sparkle = std::sin(typePhase * 3.0f);
+            sparkle = sparkle * sparkle * sparkle;  // Sharp peaks
+            
+            if (sparkle > 0.3f) {
+                float intensity = (sparkle - 0.3f) / 0.7f;
+                unsigned char alpha = (unsigned char)(p.alpha * distFade * 220 * intensity);
+                
+                if (alpha > 15) {
+                    // Bright white-gold sparkle
+                    float sparkleSize = p.size * 0.5f * (0.5f + intensity * 0.5f);
+                    DrawSphere({p.position.x, p.position.y, p.position.z}, sparkleSize, 
+                              {255, 255, 250, alpha});
+                    // Warm glow
+                    DrawSphere({p.position.x, p.position.y, p.position.z}, sparkleSize * 3.0f, 
+                              {255, 230, 180, (unsigned char)(alpha / 3)});
+                }
+            }
+        }
+        else {
+            // === Type 2: Drifting light wisps ===
+            float drift = std::sin(typePhase * 0.3f) * 0.5f + 0.5f;
+            unsigned char alpha = (unsigned char)(p.alpha * distFade * 100 * drift);
+            
+            if (alpha > 5) {
+                // Soft ethereal blue-white
+                unsigned char r = (unsigned char)(240 + drift * 15);
+                unsigned char g = (unsigned char)(245 + drift * 10);
+                unsigned char b = 255;
+                
+                DrawSphere({p.position.x, p.position.y, p.position.z}, p.size * 1.2f, 
+                          {r, g, b, alpha});
+                // Very soft outer glow
+                DrawSphere({p.position.x, p.position.y, p.position.z}, p.size * 2.5f, 
+                          {r, g, b, (unsigned char)(alpha / 5)});
+            }
         }
     }
     
