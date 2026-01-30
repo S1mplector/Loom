@@ -257,58 +257,72 @@ void Renderer3D::drawCapeMesh(const Cape3D& cape) {
     int segments = cape.getSegments();
     int width = cape.getWidth();
     
-    for (int row = 0; row < segments - 1; ++row) {
+    static float time = 0;
+    time += GetFrameTime();
+    
+    // Draw flowing light trails along each column (strand)
+    for (int col = 0; col < width; ++col) {
+        float colRatio = static_cast<float>(col) / (width - 1);
+        float colOffset = (colRatio - 0.5f) * 2.0f; // -1 to 1
+        
+        // Each strand has slight timing offset for organic flow
+        float strandPhase = col * 0.3f + time * 2.0f;
+        
+        for (int row = 0; row < segments - 1; ++row) {
+            float rowRatio = static_cast<float>(row) / (segments - 1);
+            
+            const Vector3D& p1 = cape.getParticle(row, col).position;
+            const Vector3D& p2 = cape.getParticle(row + 1, col).position;
+            
+            // Intensity pulses along strand like flowing energy
+            float pulse = 0.6f + 0.4f * std::sin(strandPhase - rowRatio * 4.0f);
+            
+            // Fade out toward edges and tips
+            float edgeFade = 1.0f - std::abs(colOffset) * 0.4f;
+            float tipFade = 1.0f - rowRatio * 0.7f;
+            float intensity = pulse * edgeFade * tipFade;
+            
+            // Color: bright warm yellow at base → soft orange → fading amber at tips
+            unsigned char r = 255;
+            unsigned char g = (unsigned char)(255 - rowRatio * 120);
+            unsigned char b = (unsigned char)(200 - rowRatio * 180);
+            
+            // Core glow - bright center of each light strand
+            float coreSize = (2.5f - rowRatio * 1.5f) * intensity;
+            unsigned char coreAlpha = (unsigned char)(200 * intensity);
+            DrawSphere({p1.x, p1.y, p1.z}, coreSize, {r, g, b, coreAlpha});
+            
+            // Outer glow halo
+            float glowSize = coreSize * 2.5f;
+            unsigned char glowAlpha = (unsigned char)(80 * intensity);
+            DrawSphere({p1.x, p1.y, p1.z}, glowSize, {255, (unsigned char)(g * 0.8f), (unsigned char)(b * 0.5f), glowAlpha});
+            
+            // Connecting light between particles (like flowing energy)
+            if (row < segments - 2) {
+                Vector3D mid = (p1 + p2) * 0.5f;
+                float midSize = coreSize * 0.7f;
+                unsigned char midAlpha = (unsigned char)(120 * intensity);
+                DrawSphere({mid.x, mid.y, mid.z}, midSize, {r, g, b, midAlpha});
+            }
+        }
+    }
+    
+    // Add subtle cross-connections for ethereal web effect
+    for (int row = 1; row < segments; row += 2) {
         float rowRatio = static_cast<float>(row) / (segments - 1);
+        float rowIntensity = (1.0f - rowRatio) * 0.5f;
         
         for (int col = 0; col < width - 1; ++col) {
             const Vector3D& p1 = cape.getParticle(row, col).position;
             const Vector3D& p2 = cape.getParticle(row, col + 1).position;
-            const Vector3D& p3 = cape.getParticle(row + 1, col).position;
-            const Vector3D& p4 = cape.getParticle(row + 1, col + 1).position;
+            Vector3D mid = (p1 + p2) * 0.5f;
             
-            // Rich gradient from warm inner to cool outer edges
-            float colRatio = std::abs((col - width/2.0f) / (width/2.0f));
+            float pulse = 0.5f + 0.5f * std::sin(time * 3.0f + row * 0.5f + col * 0.3f);
+            unsigned char alpha = (unsigned char)(40 * rowIntensity * pulse);
             
-            Color color = {
-                (unsigned char)(config.capeColorInner.r + (config.capeColorOuter.r - config.capeColorInner.r) * rowRatio),
-                (unsigned char)(config.capeColorInner.g + (config.capeColorOuter.g - config.capeColorInner.g) * rowRatio * 0.8f),
-                (unsigned char)(config.capeColorInner.b + (config.capeColorOuter.b - config.capeColorInner.b) * rowRatio * 1.2f),
-                (unsigned char)(250 - rowRatio * 40 - colRatio * 20)
-            };
-            
-            // Front face
-            DrawTriangle3D(
-                {p1.x, p1.y, p1.z},
-                {p3.x, p3.y, p3.z},
-                {p2.x, p2.y, p2.z},
-                color
-            );
-            DrawTriangle3D(
-                {p2.x, p2.y, p2.z},
-                {p3.x, p3.y, p3.z},
-                {p4.x, p4.y, p4.z},
-                color
-            );
-            
-            // Back face - darker, more saturated
-            Color backColor = {
-                (unsigned char)(color.r * 0.55f),
-                (unsigned char)(color.g * 0.5f),
-                (unsigned char)(color.b * 0.6f),
-                color.a
-            };
-            DrawTriangle3D(
-                {p1.x, p1.y, p1.z},
-                {p2.x, p2.y, p2.z},
-                {p3.x, p3.y, p3.z},
-                backColor
-            );
-            DrawTriangle3D(
-                {p2.x, p2.y, p2.z},
-                {p4.x, p4.y, p4.z},
-                {p3.x, p3.y, p3.z},
-                backColor
-            );
+            if (alpha > 5) {
+                DrawSphere({mid.x, mid.y, mid.z}, 1.5f, {255, 200, 120, alpha});
+            }
         }
     }
 }
