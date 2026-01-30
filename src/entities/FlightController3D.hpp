@@ -17,6 +17,15 @@ struct FlightConfig3D {
     float windAssist = 1.0f;
     float turbulenceEffect = 0.4f;
     float bankAngle = 0.4f;
+    
+    // Mouse control settings
+    float mouseSensitivity = 0.003f;
+    float turnSmoothing = 8.0f;
+    float climbSensitivity = 0.8f;
+    float thrustAcceleration = 80.0f;
+    float thrustMaxSpeed = 150.0f;
+    float idleDeceleration = 0.985f;
+    float naturalGlideSpeed = 40.0f;
 };
 
 enum class FlightState3D {
@@ -44,6 +53,11 @@ public:
     void stopHorizontal();
     void boost();
     
+    // Mouse-based controls
+    void updateMouseControl(float mouseDeltaX, float mouseDeltaY, bool isFlying, float dt);
+    void setFlying(bool flying);
+    bool isFlying() const { return flying; }
+    
     FlightState3D getState() const { return state; }
     float getEnergy() const { return energy; }
     float getGlideEfficiency() const;
@@ -59,10 +73,17 @@ private:
     
     bool inputUp, inputDown, inputLeft, inputRight, inputForward, inputBackward;
     bool isBoosting;
+    bool flying;
     
     float energy;
     float stateTimer;
     float boostTimer;
+    
+    // Mouse control state
+    float targetYaw;
+    float targetPitch;
+    float currentYaw;
+    float currentPitch;
 
     void updateState();
     void applyGlidePhysics(float dt);

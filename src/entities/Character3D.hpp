@@ -33,6 +33,7 @@ public:
     void setVelocity(const Vector3D& vel);
     void applyForce(const Vector3D& force);
     void rotateYaw(float angle);
+    void setYaw(float angle);
     
     const Vector3D& getPosition() const { return position; }
     const Vector3D& getVelocity() const { return velocity; }

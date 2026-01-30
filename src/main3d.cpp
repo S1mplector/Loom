@@ -74,15 +74,23 @@ int main() {
     
     Cape3D cape(character.getCapeAttachPoint(), character.getForward() * -1.0f, capeConfig);
 
-    // Smooth, responsive flight
+    // Smooth, responsive flight with mouse controls
     FlightConfig3D flightConfig;
     flightConfig.liftForce = 90.0f;
     flightConfig.diveForce = 40.0f;
     flightConfig.horizontalForce = 85.0f;
     flightConfig.glideRatio = 3.5f;
     flightConfig.windAssist = 0.0f;
+    flightConfig.mouseSensitivity = 0.002f;
+    flightConfig.turnSmoothing = 6.0f;
+    flightConfig.thrustAcceleration = 100.0f;
+    flightConfig.thrustMaxSpeed = 180.0f;
+    flightConfig.climbSensitivity = 0.6f;
     
     FlightController3D flight(&character, flightConfig);
+    
+    // Hide and capture mouse cursor for mouse look
+    DisableCursor();
 
     // Camera locked behind player
     FlightCameraConfig cameraConfig;
@@ -144,16 +152,32 @@ int main() {
         dt = std::min(dt, 0.033f);
         time += dt;
 
-        flight.stopVertical();
-        flight.stopHorizontal();
+        // === MOUSE + LEFT-CLICK CONTROLS ===
+        // Mouse movement controls direction
+        // Left-click (hold) to fly/thrust forward
+        // Release to glide naturally
         
-        if (IsKeyDown(KEY_W)) flight.moveForward();
-        if (IsKeyDown(KEY_S)) flight.moveBackward();
-        if (IsKeyDown(KEY_A)) flight.moveLeft();
-        if (IsKeyDown(KEY_D)) flight.moveRight();
-        if (IsKeyDown(KEY_SPACE)) flight.moveUp();
-        if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) flight.moveDown();
-        if (IsKeyPressed(KEY_E)) flight.boost();
+        Vector2 mouseDelta = GetMouseDelta();
+        bool isFlying = IsMouseButtonDown(MOUSE_BUTTON_LEFT);
+        
+        // Double-click detection for boost
+        static float lastClickTime = 0.0f;
+        static bool wasClicked = false;
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            float currentTime = GetTime();
+            if (currentTime - lastClickTime < 0.3f && wasClicked) {
+                flight.boost();
+                wasClicked = false;
+            } else {
+                wasClicked = true;
+            }
+            lastClickTime = currentTime;
+        }
+        
+        // Right-click for quick ascent (optional)
+        if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT) && flight.getEnergy() > 0) {
+            character.applyForce(Vector3D(0, 120.0f, 0));
+        }
         
         if (IsKeyPressed(KEY_V)) {
             showWindDebug = !showWindDebug;
@@ -170,10 +194,15 @@ int main() {
         if (IsKeyPressed(KEY_M)) {
             windSound.setEnabled(!windSound.isEnabled());
         }
-
-        // Camera is locked - no manual orbit
+        
+        if (IsKeyPressed(KEY_ESCAPE)) {
+            EnableCursor();
+        }
 
         wind.update(dt);
+        
+        // Use mouse-based flight control
+        flight.updateMouseControl(mouseDelta.x, mouseDelta.y, isFlying, dt);
         flight.update(dt, wind);
         character.update(dt);
         

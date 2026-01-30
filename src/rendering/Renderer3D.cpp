@@ -367,139 +367,145 @@ void Renderer3D::drawCapeMesh(const Cape3D& cape) {
     static float time = 0;
     time += GetFrameTime();
     
-    // === LAYER 1: Ethereal ribbon mesh with smooth gradients ===
-    for (int row = 0; row < segments - 1; ++row) {
-        float rowRatio = static_cast<float>(row) / (segments - 1);
-        float nextRowRatio = static_cast<float>(row + 1) / (segments - 1);
-        
-        for (int col = 0; col < width - 1; ++col) {
-            float colRatio = static_cast<float>(col) / (width - 1);
-            float colOffset = (colRatio - 0.5f) * 2.0f;
-            
-            const Vector3D& p00 = cape.getParticle(row, col).position;
-            const Vector3D& p01 = cape.getParticle(row, col + 1).position;
-            const Vector3D& p10 = cape.getParticle(row + 1, col).position;
-            const Vector3D& p11 = cape.getParticle(row + 1, col + 1).position;
-            
-            // Flowing wave pattern across the cape
-            float wavePhase = time * 1.5f + colRatio * 3.14159f + rowRatio * 2.0f;
-            float wave = 0.7f + 0.3f * std::sin(wavePhase);
-            
-            // Aurora-like color shifting
-            float hueShift = std::sin(time * 0.8f + colRatio * 2.0f) * 0.5f + 0.5f;
-            float edgeFade = 1.0f - std::abs(colOffset) * 0.3f;
-            float tipFade = 1.0f - rowRatio * 0.5f;
-            float intensity = wave * edgeFade * tipFade;
-            
-            // Gradient: warm gold → soft rose → ethereal blue at tips
-            unsigned char r = (unsigned char)(255 - rowRatio * 40 * hueShift);
-            unsigned char g = (unsigned char)(220 - rowRatio * 80 + hueShift * 30);
-            unsigned char b = (unsigned char)(180 + rowRatio * 60 + hueShift * 40);
-            unsigned char alpha = (unsigned char)(180 * intensity);
-            
-            Color quadColor = {r, g, b, alpha};
-            
-            // Draw smooth quad as two triangles
-            DrawTriangle3D(
-                {p00.x, p00.y, p00.z},
-                {p10.x, p10.y, p10.z},
-                {p01.x, p01.y, p01.z},
-                quadColor
-            );
-            DrawTriangle3D(
-                {p01.x, p01.y, p01.z},
-                {p10.x, p10.y, p10.z},
-                {p11.x, p11.y, p11.z},
-                quadColor
-            );
-            // Back faces
-            DrawTriangle3D(
-                {p00.x, p00.y, p00.z},
-                {p01.x, p01.y, p01.z},
-                {p10.x, p10.y, p10.z},
-                quadColor
-            );
-            DrawTriangle3D(
-                {p01.x, p01.y, p01.z},
-                {p11.x, p11.y, p11.z},
-                {p10.x, p10.y, p10.z},
-                quadColor
-            );
-        }
-    }
+    // === ORGANIC FLOWING ENERGY CAPE ===
+    // No visible attachment - energy streams that emanate naturally
     
-    // === LAYER 2: Glowing edge highlights ===
+    // === LAYER 1: Soft volumetric energy field (base glow) ===
     for (int row = 0; row < segments; ++row) {
         float rowRatio = static_cast<float>(row) / (segments - 1);
+        // Fade in from nothing at the top (organic emergence)
+        float emergeFade = std::min(rowRatio * 4.0f, 1.0f);  // First 25% fades in
+        float tipFade = 1.0f - std::pow(rowRatio, 1.5f) * 0.6f;
         
-        // Left and right edge glow
-        for (int edge = 0; edge < 2; ++edge) {
-            int col = (edge == 0) ? 0 : width - 1;
+        for (int col = 0; col < width; ++col) {
+            float colRatio = static_cast<float>(col) / (width - 1);
+            float colCenter = 1.0f - std::abs(colRatio - 0.5f) * 1.6f;  // Stronger in center
+            
             const Vector3D& p = cape.getParticle(row, col).position;
             
-            float pulse = 0.6f + 0.4f * std::sin(time * 3.0f + rowRatio * 6.0f + edge * 3.14159f);
-            float tipFade = 1.0f - rowRatio * 0.6f;
-            float glowIntensity = pulse * tipFade;
+            // Organic wave modulation
+            float wave1 = std::sin(time * 1.2f + rowRatio * 5.0f + colRatio * 3.0f) * 0.3f + 0.7f;
+            float wave2 = std::sin(time * 0.7f + col * 0.8f) * 0.2f + 0.8f;
+            float organicPulse = wave1 * wave2;
             
-            float glowSize = (1.8f - rowRatio * 0.8f) * glowIntensity;
-            unsigned char glowAlpha = (unsigned char)(140 * glowIntensity);
+            float intensity = emergeFade * tipFade * colCenter * organicPulse;
             
-            // Inner bright core
-            DrawSphere({p.x, p.y, p.z}, glowSize * 0.5f, {255, 250, 240, glowAlpha});
-            // Outer soft glow
-            DrawSphere({p.x, p.y, p.z}, glowSize * 1.5f, {255, 220, 180, (unsigned char)(glowAlpha / 3)});
+            if (intensity > 0.05f) {
+                // Color shifts organically - warm core to cool edges
+                float hueFlow = std::sin(time * 0.5f + rowRatio * 2.0f + colRatio) * 0.5f + 0.5f;
+                unsigned char r = (unsigned char)(255 - rowRatio * 20);
+                unsigned char g = (unsigned char)(230 - rowRatio * 50 + hueFlow * 20);
+                unsigned char b = (unsigned char)(200 + rowRatio * 40 + hueFlow * 30);
+                
+                // Soft, diffuse particles (no harsh edges)
+                float baseSize = (2.0f - rowRatio * 0.8f) * intensity;
+                unsigned char alpha = (unsigned char)(90 * intensity);
+                
+                // Multiple overlapping soft spheres for smooth appearance
+                DrawSphere({p.x, p.y, p.z}, baseSize * 1.5f, {r, g, b, (unsigned char)(alpha * 0.3f)});
+                DrawSphere({p.x, p.y, p.z}, baseSize * 1.0f, {r, g, b, (unsigned char)(alpha * 0.5f)});
+                DrawSphere({p.x, p.y, p.z}, baseSize * 0.6f, {r, g, b, alpha});
+            }
         }
     }
     
-    // === LAYER 3: Trailing tip sparkles ===
-    int lastRow = segments - 1;
+    // === LAYER 2: Flowing energy ribbons (smooth interpolated strands) ===
     for (int col = 0; col < width; ++col) {
         float colRatio = static_cast<float>(col) / (width - 1);
-        const Vector3D& tipPos = cape.getParticle(lastRow, col).position;
-        const Vector3D& prevPos = cape.getParticle(lastRow - 1, col).position;
-        
-        // Velocity-based sparkle intensity
-        Vector3D tipVel = tipPos - prevPos;
-        float speed = tipVel.length() * 60.0f;
-        float sparkleIntensity = std::min(speed * 0.15f, 1.0f);
-        
-        float sparklePhase = time * 8.0f + col * 1.7f;
-        float sparkle = (std::sin(sparklePhase) * 0.5f + 0.5f) * sparkleIntensity;
-        
-        if (sparkle > 0.2f) {
-            unsigned char alpha = (unsigned char)(200 * sparkle);
-            float size = 1.0f + sparkle * 1.5f;
-            
-            // Bright sparkle
-            DrawSphere({tipPos.x, tipPos.y, tipPos.z}, size, {255, 255, 255, alpha});
-            // Warm glow halo
-            DrawSphere({tipPos.x, tipPos.y, tipPos.z}, size * 2.5f, {255, 200, 150, (unsigned char)(alpha / 4)});
-        }
-    }
-    
-    // === LAYER 4: Flowing energy strands (subtle) ===
-    for (int col = 1; col < width - 1; col += 2) {
-        float colRatio = static_cast<float>(col) / (width - 1);
-        float strandPhase = time * 2.5f + col * 0.5f;
+        float colCenter = 1.0f - std::abs(colRatio - 0.5f) * 1.2f;
+        float strandPhase = time * 1.8f + col * 0.4f;
         
         for (int row = 0; row < segments - 1; ++row) {
             float rowRatio = static_cast<float>(row) / (segments - 1);
+            float emergeFade = std::min(rowRatio * 5.0f, 1.0f);
+            float tipFade = 1.0f - std::pow(rowRatio, 1.2f) * 0.7f;
             
             const Vector3D& p1 = cape.getParticle(row, col).position;
             const Vector3D& p2 = cape.getParticle(row + 1, col).position;
-            Vector3D mid = (p1 + p2) * 0.5f;
             
-            // Energy pulse traveling down the strand
-            float energyPos = std::fmod(strandPhase, 1.0f);
-            float distToEnergy = std::abs(rowRatio - energyPos);
-            float energyIntensity = std::max(0.0f, 1.0f - distToEnergy * 4.0f);
-            
-            if (energyIntensity > 0.1f) {
-                float tipFade = 1.0f - rowRatio * 0.5f;
-                unsigned char alpha = (unsigned char)(120 * energyIntensity * tipFade);
-                float size = 1.2f * energyIntensity;
+            // Smooth interpolation along strand
+            for (float t = 0.0f; t < 1.0f; t += 0.25f) {
+                Vector3D interp = p1 + (p2 - p1) * t;
+                float localRatio = rowRatio + t / (segments - 1);
                 
-                DrawSphere({mid.x, mid.y, mid.z}, size, {255, 240, 200, alpha});
+                // Flowing energy pulse
+                float energyWave = std::sin(strandPhase - localRatio * 6.0f);
+                energyWave = energyWave * 0.5f + 0.5f;
+                energyWave = std::pow(energyWave, 2.0f);  // Sharper pulses
+                
+                float intensity = emergeFade * tipFade * colCenter * (0.3f + energyWave * 0.7f);
+                
+                if (intensity > 0.1f) {
+                    float size = (1.2f - localRatio * 0.4f) * intensity;
+                    unsigned char alpha = (unsigned char)(140 * intensity * energyWave);
+                    
+                    // Warm golden energy
+                    DrawSphere({interp.x, interp.y, interp.z}, size, {255, 245, 220, alpha});
+                }
+            }
+        }
+    }
+    
+    // === LAYER 3: Wispy trailing edges (organic dissipation) ===
+    for (int row = segments / 2; row < segments; ++row) {
+        float rowRatio = static_cast<float>(row) / (segments - 1);
+        float dissipation = (rowRatio - 0.5f) * 2.0f;  // 0 to 1 in bottom half
+        
+        for (int col = 0; col < width; ++col) {
+            float colRatio = static_cast<float>(col) / (width - 1);
+            const Vector3D& p = cape.getParticle(row, col).position;
+            const Vector3D& pPrev = cape.getParticle(row - 1, col).position;
+            
+            // Velocity for wisp direction
+            Vector3D vel = p - pPrev;
+            float speed = vel.length();
+            
+            // Random-ish wisp offset based on position
+            float wispPhase = time * 3.0f + row * 1.3f + col * 2.1f;
+            float wispX = std::sin(wispPhase) * dissipation * 2.0f;
+            float wispY = std::cos(wispPhase * 0.7f) * dissipation * 1.5f;
+            float wispZ = std::sin(wispPhase * 1.3f) * dissipation * 2.0f;
+            
+            Vector3D wispPos = p + Vector3D(wispX, wispY, wispZ);
+            
+            float wispIntensity = dissipation * (0.3f + speed * 10.0f);
+            wispIntensity = std::min(wispIntensity, 1.0f);
+            
+            if (wispIntensity > 0.1f) {
+                unsigned char alpha = (unsigned char)(60 * wispIntensity * (1.0f - dissipation * 0.5f));
+                float size = 0.8f + dissipation * 0.5f;
+                
+                DrawSphere({wispPos.x, wispPos.y, wispPos.z}, size, {255, 240, 210, alpha});
+            }
+        }
+    }
+    
+    // === LAYER 4: Sparkle motes (energy particles breaking off) ===
+    for (int col = 0; col < width; col += 2) {
+        float colRatio = static_cast<float>(col) / (width - 1);
+        
+        for (int row = segments * 2 / 3; row < segments; ++row) {
+            float rowRatio = static_cast<float>(row) / (segments - 1);
+            const Vector3D& p = cape.getParticle(row, col).position;
+            
+            // Sparkle timing
+            float sparklePhase = time * 6.0f + row * 2.7f + col * 1.9f;
+            float sparkle = std::sin(sparklePhase);
+            sparkle = std::pow(std::max(0.0f, sparkle), 4.0f);  // Sharp bright peaks
+            
+            if (sparkle > 0.3f) {
+                float intensity = (sparkle - 0.3f) / 0.7f;
+                
+                // Offset sparkle slightly
+                float ox = std::sin(sparklePhase * 1.7f) * 1.5f;
+                float oy = std::cos(sparklePhase * 2.3f) * 1.0f;
+                float oz = std::sin(sparklePhase * 1.1f) * 1.5f;
+                
+                unsigned char alpha = (unsigned char)(200 * intensity);
+                float size = 0.4f + intensity * 0.8f;
+                
+                DrawSphere({p.x + ox, p.y + oy, p.z + oz}, size, {255, 255, 250, alpha});
+                DrawSphere({p.x + ox, p.y + oy, p.z + oz}, size * 2.5f, {255, 230, 180, (unsigned char)(alpha / 4)});
             }
         }
     }
@@ -515,65 +521,127 @@ void Renderer3D::drawCharacter(const Character3D& character) {
     BeginMode3D(raylibCamera);
     
     Vector3D pos = character.getPosition();
-    float radius = character.getRadius();
+    float baseRadius = character.getRadius();
+    Vector3D vel = character.getVelocity();
+    float speed = vel.length();
     
     static float time = 0;
     time += GetFrameTime();
     
-    // === Breathing pulse animation ===
-    float breathe = 1.0f + std::sin(time * 2.0f) * 0.08f;
-    float heartbeat = 1.0f + std::sin(time * 4.5f) * 0.03f * (std::sin(time * 0.5f) > 0 ? 1.0f : 0.0f);
-    float pulse = breathe * heartbeat;
+    // === FLOWING ENERGY BEING - Inconsistent, organic form ===
     
-    // === LAYER 1: Ambient light field (very large, subtle) ===
-    DrawSphere({pos.x, pos.y, pos.z}, radius * 8.0f * pulse, {255, 240, 220, 15});
-    DrawSphere({pos.x, pos.y, pos.z}, radius * 6.0f * pulse, {255, 230, 200, 25});
+    // Movement affects the energy's coherence
+    float coherence = 1.0f - std::min(speed / 200.0f, 0.4f);  // Less coherent when moving fast
+    float energyState = std::sin(time * 1.5f) * 0.15f + 0.85f;  // Constant subtle fluctuation
     
-    // === LAYER 2: Ethereal aura rings ===
-    for (int ring = 0; ring < 3; ++ring) {
-        float ringPhase = time * (1.5f - ring * 0.3f) + ring * 2.094f;
-        float ringPulse = 0.8f + 0.2f * std::sin(ringPhase);
-        float ringSize = radius * (3.5f - ring * 0.6f) * ringPulse * pulse;
-        unsigned char ringAlpha = (unsigned char)(50 - ring * 12);
+    // === LAYER 1: Diffuse energy cloud (outermost, very soft) ===
+    for (int i = 0; i < 8; ++i) {
+        float phase = time * (0.8f + i * 0.1f) + i * 0.785f;
+        float wobble = std::sin(phase) * (1.0f - coherence) * baseRadius * 2.0f;
         
-        // Warm gradient from inner to outer
-        unsigned char r = 255;
-        unsigned char g = (unsigned char)(200 + ring * 20);
-        unsigned char b = (unsigned char)(150 + ring * 30);
+        float ox = std::sin(phase * 1.3f) * wobble;
+        float oy = std::cos(phase * 0.9f) * wobble * 0.6f;
+        float oz = std::sin(phase * 1.1f + 1.0f) * wobble;
         
-        DrawSphere({pos.x, pos.y, pos.z}, ringSize, {r, g, b, ringAlpha});
+        float cloudSize = baseRadius * (4.0f + std::sin(phase * 0.7f) * 1.5f) * energyState;
+        unsigned char alpha = (unsigned char)(20 + std::sin(phase) * 8);
+        
+        DrawSphere({pos.x + ox, pos.y + oy, pos.z + oz}, cloudSize, {255, 235, 210, alpha});
     }
     
-    // === LAYER 3: Core glow layers ===
-    DrawSphere({pos.x, pos.y, pos.z}, radius * 2.2f * pulse, {255, 220, 180, 80});
-    DrawSphere({pos.x, pos.y, pos.z}, radius * 1.6f * pulse, {255, 235, 200, 140});
-    DrawSphere({pos.x, pos.y, pos.z}, radius * 1.2f * pulse, {255, 245, 220, 200});
-    
-    // === LAYER 4: Solid character body ===
-    DrawSphere({pos.x, pos.y, pos.z}, radius * 0.9f, {255, 250, 240, 255});
-    
-    // === LAYER 5: Inner light core ===
-    float coreFlicker = 1.0f + std::sin(time * 6.0f) * 0.1f + std::sin(time * 11.0f) * 0.05f;
-    DrawSphere({pos.x, pos.y, pos.z}, radius * 0.5f * coreFlicker, {255, 255, 250, 255});
-    DrawSphere({pos.x, pos.y, pos.z}, radius * 0.25f * coreFlicker, {255, 255, 255, 255});
-    
-    // === LAYER 6: Orbiting light wisps ===
-    for (int i = 0; i < 4; ++i) {
-        float orbitSpeed = 1.2f + i * 0.3f;
-        float orbitRadius = radius * (2.0f + i * 0.5f);
-        float orbitTilt = i * 0.4f;
-        float orbitPhase = time * orbitSpeed + i * 1.57f;
+    // === LAYER 2: Flowing energy tendrils (organic, asymmetric) ===
+    for (int tendril = 0; tendril < 6; ++tendril) {
+        float tPhase = time * (1.2f + tendril * 0.15f) + tendril * 1.047f;
+        float tLength = baseRadius * (2.5f + std::sin(tPhase * 0.6f) * 1.0f);
         
-        float wx = pos.x + std::cos(orbitPhase) * orbitRadius;
-        float wy = pos.y + std::sin(orbitPhase * 0.7f + orbitTilt) * orbitRadius * 0.4f;
-        float wz = pos.z + std::sin(orbitPhase) * orbitRadius;
+        // Tendril direction - constantly shifting
+        float tAngle = tPhase * 0.3f + tendril * 1.047f;
+        float tPitch = std::sin(tPhase * 0.5f + tendril) * 0.5f;
         
-        float wispPulse = 0.6f + 0.4f * std::sin(orbitPhase * 2.0f);
-        float wispSize = radius * 0.3f * wispPulse;
-        unsigned char wispAlpha = (unsigned char)(150 * wispPulse);
+        Vector3D tDir(
+            std::cos(tAngle) * std::cos(tPitch),
+            std::sin(tPitch) * 0.5f,
+            std::sin(tAngle) * std::cos(tPitch)
+        );
         
-        DrawSphere({wx, wy, wz}, wispSize, {255, 250, 230, wispAlpha});
-        DrawSphere({wx, wy, wz}, wispSize * 2.0f, {255, 230, 180, (unsigned char)(wispAlpha / 3)});
+        // Draw tendril as series of fading particles
+        for (int seg = 0; seg < 5; ++seg) {
+            float segRatio = seg / 4.0f;
+            float segPhase = tPhase + seg * 0.3f;
+            
+            // Tendril curves and waves
+            float curve = std::sin(segPhase) * segRatio * baseRadius * 0.8f;
+            Vector3D perpDir(-tDir.z, 0, tDir.x);
+            
+            Vector3D segPos = pos + tDir * (tLength * segRatio) + perpDir * curve;
+            segPos.y += std::cos(segPhase * 1.3f) * segRatio * baseRadius * 0.5f;
+            
+            float segSize = baseRadius * (0.8f - segRatio * 0.5f) * energyState;
+            float segIntensity = (1.0f - segRatio * 0.7f) * (0.6f + std::sin(segPhase) * 0.4f);
+            unsigned char alpha = (unsigned char)(100 * segIntensity);
+            
+            unsigned char r = 255;
+            unsigned char g = (unsigned char)(240 - segRatio * 30);
+            unsigned char b = (unsigned char)(210 + segRatio * 30);
+            
+            DrawSphere({segPos.x, segPos.y, segPos.z}, segSize * 1.5f, {r, g, b, (unsigned char)(alpha * 0.4f)});
+            DrawSphere({segPos.x, segPos.y, segPos.z}, segSize, {r, g, b, alpha});
+        }
+    }
+    
+    // === LAYER 3: Core energy mass (shifting, not perfectly round) ===
+    for (int blob = 0; blob < 5; ++blob) {
+        float bPhase = time * (2.0f + blob * 0.3f) + blob * 1.256f;
+        
+        // Each blob shifts position slightly
+        float bOffset = baseRadius * 0.4f * (1.0f - coherence * 0.5f);
+        float bx = std::sin(bPhase * 1.1f) * bOffset;
+        float by = std::cos(bPhase * 0.8f) * bOffset * 0.6f;
+        float bz = std::sin(bPhase * 0.9f + 2.0f) * bOffset;
+        
+        float bSize = baseRadius * (0.9f + std::sin(bPhase) * 0.25f) * energyState;
+        float bIntensity = 0.7f + std::sin(bPhase * 1.5f) * 0.3f;
+        unsigned char alpha = (unsigned char)(180 * bIntensity);
+        
+        // Warm core color
+        DrawSphere({pos.x + bx, pos.y + by, pos.z + bz}, bSize * 1.3f, {255, 240, 200, (unsigned char)(alpha * 0.5f)});
+        DrawSphere({pos.x + bx, pos.y + by, pos.z + bz}, bSize, {255, 250, 230, alpha});
+    }
+    
+    // === LAYER 4: Bright flickering core (the "soul") ===
+    float coreFlicker = 0.7f + std::sin(time * 8.0f) * 0.15f 
+                            + std::sin(time * 13.0f) * 0.1f
+                            + std::sin(time * 21.0f) * 0.05f;
+    
+    // Core position also shifts slightly
+    float cx = std::sin(time * 3.0f) * baseRadius * 0.15f * (1.0f - coherence);
+    float cy = std::cos(time * 2.5f) * baseRadius * 0.1f * (1.0f - coherence);
+    float cz = std::sin(time * 2.8f + 1.0f) * baseRadius * 0.15f * (1.0f - coherence);
+    
+    float coreSize = baseRadius * 0.5f * coreFlicker;
+    DrawSphere({pos.x + cx, pos.y + cy, pos.z + cz}, coreSize * 1.8f, {255, 250, 235, 120});
+    DrawSphere({pos.x + cx, pos.y + cy, pos.z + cz}, coreSize * 1.2f, {255, 255, 245, 200});
+    DrawSphere({pos.x + cx, pos.y + cy, pos.z + cz}, coreSize * 0.6f, {255, 255, 255, 255});
+    
+    // === LAYER 5: Sparking energy motes (random bright flashes) ===
+    for (int spark = 0; spark < 8; ++spark) {
+        float sPhase = time * (5.0f + spark * 0.7f) + spark * 0.8f;
+        float sparkIntensity = std::sin(sPhase);
+        sparkIntensity = std::pow(std::max(0.0f, sparkIntensity), 6.0f);  // Very sharp peaks
+        
+        if (sparkIntensity > 0.1f) {
+            // Random-ish position around the being
+            float sRadius = baseRadius * (1.5f + std::sin(sPhase * 0.3f) * 1.0f);
+            float sx = pos.x + std::sin(sPhase * 1.7f) * sRadius;
+            float sy = pos.y + std::cos(sPhase * 1.3f) * sRadius * 0.5f;
+            float sz = pos.z + std::sin(sPhase * 1.1f + 2.0f) * sRadius;
+            
+            float sSize = baseRadius * 0.2f * sparkIntensity;
+            unsigned char alpha = (unsigned char)(255 * sparkIntensity);
+            
+            DrawSphere({sx, sy, sz}, sSize, {255, 255, 255, alpha});
+            DrawSphere({sx, sy, sz}, sSize * 3.0f, {255, 240, 200, (unsigned char)(alpha * 0.3f)});
+        }
     }
     
     EndMode3D();

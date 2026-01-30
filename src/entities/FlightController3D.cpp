@@ -8,14 +8,16 @@ FlightController3D::FlightController3D()
     : character(nullptr)
     , state(FlightState3D::Gliding)
     , inputUp(false), inputDown(false), inputLeft(false), inputRight(false)
-    , inputForward(false), inputBackward(false), isBoosting(false)
-    , energy(100.0f), stateTimer(0.0f), boostTimer(0.0f) {}
+    , inputForward(false), inputBackward(false), isBoosting(false), flying(false)
+    , energy(100.0f), stateTimer(0.0f), boostTimer(0.0f)
+    , targetYaw(0.0f), targetPitch(0.0f), currentYaw(0.0f), currentPitch(0.0f) {}
 
 FlightController3D::FlightController3D(Character3D* character, const FlightConfig3D& config)
     : character(character), config(config), state(FlightState3D::Gliding)
     , inputUp(false), inputDown(false), inputLeft(false), inputRight(false)
-    , inputForward(false), inputBackward(false), isBoosting(false)
-    , energy(100.0f), stateTimer(0.0f), boostTimer(0.0f) {}
+    , inputForward(false), inputBackward(false), isBoosting(false), flying(false)
+    , energy(100.0f), stateTimer(0.0f), boostTimer(0.0f)
+    , targetYaw(0.0f), targetPitch(0.0f), currentYaw(0.0f), currentPitch(0.0f) {}
 
 void FlightController3D::update(float dt, const WindField3D& wind) {
     if (!character) return;
@@ -179,6 +181,99 @@ void FlightController3D::stopHorizontal() { inputLeft = false; inputRight = fals
 void FlightController3D::boost() { isBoosting = true; boostTimer = 0; }
 
 void FlightController3D::setCharacter(Character3D* c) { character = c; }
+
+void FlightController3D::setFlying(bool isFlying) {
+    flying = isFlying;
+}
+
+void FlightController3D::updateMouseControl(float mouseDeltaX, float mouseDeltaY, bool isFlying, float dt) {
+    if (!character) return;
+    
+    flying = isFlying;
+    
+    // Accumulate mouse input into target angles
+    targetYaw -= mouseDeltaX * config.mouseSensitivity;
+    targetPitch -= mouseDeltaY * config.mouseSensitivity * config.climbSensitivity;
+    
+    // Clamp pitch to prevent flipping
+    targetPitch = std::clamp(targetPitch, -1.2f, 1.2f);
+    
+    // Smooth interpolation toward target angles
+    float smoothing = config.turnSmoothing * dt;
+    currentYaw += (targetYaw - currentYaw) * smoothing;
+    currentPitch += (targetPitch - currentPitch) * smoothing;
+    
+    // Apply rotation to character
+    character->setYaw(currentYaw);
+    
+    // Calculate movement direction based on yaw and pitch
+    Vector3D forward(
+        std::sin(currentYaw) * std::cos(currentPitch),
+        std::sin(currentPitch),
+        std::cos(currentYaw) * std::cos(currentPitch)
+    );
+    forward = forward.normalized();
+    
+    if (flying && energy > 0) {
+        // Apply thrust in the direction we're facing
+        float currentSpeed = character->getVelocity().length();
+        
+        // Accelerate up to max speed
+        if (currentSpeed < config.thrustMaxSpeed) {
+            float thrustMagnitude = config.thrustAcceleration;
+            
+            // More thrust when climbing costs more energy
+            if (currentPitch > 0.1f) {
+                energy -= dt * (10.0f + currentPitch * 15.0f);
+            } else if (currentPitch < -0.1f) {
+                // Diving recovers energy
+                energy += dt * 5.0f * std::abs(currentPitch);
+            } else {
+                energy -= dt * 3.0f;  // Minimal cost for level flight
+            }
+            
+            character->applyForce(forward * thrustMagnitude);
+        }
+        
+        // Boost on double-click or sustained click (handled externally)
+        if (isBoosting && energy > 10.0f) {
+            character->applyForce(forward * config.thrustAcceleration * 2.0f);
+            energy -= dt * 25.0f;
+            boostTimer += dt;
+            if (boostTimer > 0.5f) {
+                isBoosting = false;
+                boostTimer = 0;
+            }
+        }
+    } else {
+        // Not flying - natural glide/fall
+        // Apply gentle gravity
+        character->applyForce(Vector3D(0, -35.0f, 0));
+        
+        // Maintain some forward momentum (gliding)
+        Vector3D vel = character->getVelocity();
+        float horizontalSpeed = Vector3D(vel.x, 0, vel.z).length();
+        
+        if (horizontalSpeed > config.naturalGlideSpeed) {
+            // Generate lift based on speed
+            float lift = (horizontalSpeed - config.naturalGlideSpeed) * 0.3f;
+            character->applyForce(Vector3D(0, lift, 0));
+        }
+        
+        // Slowly decelerate
+        character->setVelocity(vel * config.idleDeceleration);
+        
+        // Recover energy when not flying
+        energy += dt * 12.0f;
+    }
+    
+    // Clamp energy
+    energy = std::clamp(energy, 0.0f, 100.0f);
+    
+    // Update state
+    updateState();
+    stateTimer += dt;
+}
 
 float FlightController3D::getGlideEfficiency() const {
     if (!character) return 0.0f;

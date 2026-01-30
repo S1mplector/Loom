@@ -106,6 +106,11 @@ void Character3D::rotateYaw(float angle) {
     rotation = yawRotation * rotation;
 }
 
+void Character3D::setYaw(float angle) {
+    // Set absolute yaw angle
+    targetRotation = Quaternion::fromAxisAngle(Vector3D(0, 1, 0), angle);
+}
+
 Vector3D Character3D::getCapeAttachPoint() const {
     Vector3D back = rotation * Vector3D(0, 0, -1);
     return position + back * config.capeOffset + Vector3D(0, config.radius * 0.3f, 0);
