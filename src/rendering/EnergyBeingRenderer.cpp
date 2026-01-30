@@ -192,66 +192,88 @@ void EnergyBeingRenderer::renderOrb(const EnergyOrb& orb, const Vector3D& center
     Vector3D worldPos = center + orb.localPosition;
     
     // Size pulses slightly
-    float sizePulse = 1.0f + std::sin(time * 3.0f + orb.phase) * 0.1f;
-    float radius = orb.radius * sizePulse * orb.brightness;
+    float sizePulse = 1.0f + std::sin(time * 3.0f + orb.phase) * 0.15f;
+    float radius = orb.radius * sizePulse * orb.brightness * 1.3f;  // Larger overall
     
-    // Color based on layer
+    // Bright glowing colors for visibility against dark
     Color baseColor;
     switch (orb.layer) {
-        case 0: baseColor = config.coreColor; break;
-        case 1: baseColor = config.midColor; break;
-        default: baseColor = config.outerColor; break;
+        case 0: baseColor = {255, 255, 255, 255}; break;      // Pure white core
+        case 1: baseColor = {255, 240, 200, 240}; break;      // Warm gold mid
+        default: baseColor = {255, 220, 150, 200}; break;     // Amber outer
     }
     
-    // Brightness adjustment
-    unsigned char alpha = (unsigned char)(baseColor.a * orb.brightness);
+    float brightness = orb.brightness;
     
-    // Multiple layers for soft appearance
+    // === STRONG MULTI-LAYER GLOW ===
+    // Outermost bloom (very large, subtle)
+    DrawSphere({worldPos.x, worldPos.y, worldPos.z}, radius * 5.0f, 
+               {255, 200, 100, (unsigned char)(25 * brightness)});
+    
     // Outer glow
-    DrawSphere({worldPos.x, worldPos.y, worldPos.z}, radius * 2.0f, 
-               {baseColor.r, baseColor.g, baseColor.b, (unsigned char)(alpha * 0.15f)});
+    DrawSphere({worldPos.x, worldPos.y, worldPos.z}, radius * 3.5f, 
+               {255, 220, 150, (unsigned char)(40 * brightness)});
     
     // Mid glow
-    DrawSphere({worldPos.x, worldPos.y, worldPos.z}, radius * 1.4f, 
-               {baseColor.r, baseColor.g, baseColor.b, (unsigned char)(alpha * 0.4f)});
+    DrawSphere({worldPos.x, worldPos.y, worldPos.z}, radius * 2.2f, 
+               {255, 235, 180, (unsigned char)(80 * brightness)});
+    
+    // Inner glow
+    DrawSphere({worldPos.x, worldPos.y, worldPos.z}, radius * 1.5f, 
+               {255, 245, 210, (unsigned char)(140 * brightness)});
     
     // Core
     DrawSphere({worldPos.x, worldPos.y, worldPos.z}, radius, 
-               {baseColor.r, baseColor.g, baseColor.b, alpha});
+               {baseColor.r, baseColor.g, baseColor.b, baseColor.a});
     
-    // Bright center for core orbs
+    // Bright hot center
     if (orb.layer == 0) {
+        DrawSphere({worldPos.x, worldPos.y, worldPos.z}, radius * 0.6f, 
+                   {255, 255, 255, 255});
+        DrawSphere({worldPos.x, worldPos.y, worldPos.z}, radius * 0.3f, 
+                   {255, 255, 255, 255});
+    } else if (orb.layer == 1) {
         DrawSphere({worldPos.x, worldPos.y, worldPos.z}, radius * 0.5f, 
-                   {255, 255, 255, (unsigned char)(alpha * 0.9f)});
+                   {255, 255, 245, 230});
     }
 }
 
 void EnergyBeingRenderer::renderGlow(const Vector3D& center, float speedFactor) {
-    // Overall ambient glow around the being
-    float glowPulse = 1.0f + std::sin(time * 1.5f) * 0.1f;
-    float glowSize = 12.0f * glowPulse * (1.0f + speedFactor * 0.3f);
+    // Strong ambient glow - very visible in dark
+    float glowPulse = 1.0f + std::sin(time * 1.5f) * 0.15f;
+    float glowSize = 18.0f * glowPulse * (1.0f + speedFactor * 0.4f);
     
-    // Layered glow for soft effect
-    DrawSphere({center.x, center.y, center.z}, glowSize * 1.5f, 
-               {config.glowColor.r, config.glowColor.g, config.glowColor.b, 8});
+    // === MASSIVE MULTI-LAYER GLOW FOR VISIBILITY ===
+    // Outermost atmospheric glow
+    DrawSphere({center.x, center.y, center.z}, glowSize * 4.0f, 
+               {255, 180, 80, 10});
+    DrawSphere({center.x, center.y, center.z}, glowSize * 3.0f, 
+               {255, 200, 100, 18});
+    DrawSphere({center.x, center.y, center.z}, glowSize * 2.2f, 
+               {255, 215, 130, 30});
+    DrawSphere({center.x, center.y, center.z}, glowSize * 1.6f, 
+               {255, 230, 160, 45});
     DrawSphere({center.x, center.y, center.z}, glowSize * 1.2f, 
-               {config.glowColor.r, config.glowColor.g, config.glowColor.b, 15});
+               {255, 240, 190, 60});
     DrawSphere({center.x, center.y, center.z}, glowSize * 0.9f, 
-               {config.glowColor.r, config.glowColor.g, config.glowColor.b, 25});
+               {255, 250, 220, 80});
     
     // Speed-based energy burst
-    if (speedFactor > 0.5f) {
-        float burstAlpha = (speedFactor - 0.5f) * 2.0f * 20.0f;
-        DrawSphere({center.x, center.y, center.z}, glowSize * 1.8f, 
-                   {255, 240, 200, (unsigned char)burstAlpha});
+    if (speedFactor > 0.3f) {
+        float burstIntensity = (speedFactor - 0.3f) / 0.7f;
+        float burstAlpha = burstIntensity * 50.0f;
+        DrawSphere({center.x, center.y, center.z}, glowSize * 2.5f, 
+                   {255, 220, 150, (unsigned char)burstAlpha});
+        DrawSphere({center.x, center.y, center.z}, glowSize * 3.5f, 
+                   {255, 200, 100, (unsigned char)(burstAlpha * 0.4f)});
     }
 }
 
 void EnergyBeingRenderer::renderConnections(const Vector3D& center, float speedFactor) {
     // When merged (low speed), draw soft connections between close orbs
-    if (speedFactor > 0.6f) return; // Skip when moving fast
+    if (speedFactor > 0.7f) return; // Skip when moving fast
     
-    float connectionStrength = 1.0f - speedFactor * 1.5f;
+    float connectionStrength = 1.0f - speedFactor * 1.3f;
     connectionStrength = std::max(0.0f, connectionStrength);
     
     for (size_t i = 0; i < orbs.size(); ++i) {
@@ -261,22 +283,29 @@ void EnergyBeingRenderer::renderConnections(const Vector3D& center, float speedF
             
             // Only connect orbs that are close
             float dist = (a.localPosition - b.localPosition).length();
-            float maxDist = (a.radius + b.radius) * 4.0f;
+            float maxDist = (a.radius + b.radius) * 5.0f;
             
             if (dist < maxDist) {
-                float alpha = (1.0f - dist / maxDist) * connectionStrength * 60.0f;
-                if (alpha < 5.0f) continue;
+                float proximity = 1.0f - dist / maxDist;
+                float alpha = proximity * connectionStrength * 120.0f;  // Brighter connections
+                if (alpha < 8.0f) continue;
                 
                 Vector3D worldA = center + a.localPosition;
                 Vector3D worldB = center + b.localPosition;
                 Vector3D mid = (worldA + worldB) * 0.5f;
                 
-                // Draw soft blob at midpoint
-                float midSize = (a.radius + b.radius) * 0.3f * (1.0f - dist / maxDist);
-                DrawSphere({mid.x, mid.y, mid.z}, midSize * 1.5f, 
-                          {255, 245, 220, (unsigned char)(alpha * 0.5f)});
-                DrawSphere({mid.x, mid.y, mid.z}, midSize, 
-                          {255, 250, 240, (unsigned char)alpha});
+                // Multiple interpolation points for smooth connection
+                for (float t = 0.25f; t <= 0.75f; t += 0.25f) {
+                    Vector3D point = worldA + (worldB - worldA) * t;
+                    float pointSize = (a.radius + b.radius) * 0.4f * proximity * (1.0f - std::abs(t - 0.5f) * 1.5f);
+                    
+                    DrawSphere({point.x, point.y, point.z}, pointSize * 2.5f, 
+                              {255, 220, 150, (unsigned char)(alpha * 0.3f)});
+                    DrawSphere({point.x, point.y, point.z}, pointSize * 1.5f, 
+                              {255, 240, 200, (unsigned char)(alpha * 0.6f)});
+                    DrawSphere({point.x, point.y, point.z}, pointSize, 
+                              {255, 250, 230, (unsigned char)alpha});
+                }
             }
         }
     }

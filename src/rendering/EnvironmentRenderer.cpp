@@ -15,6 +15,30 @@ EnvironmentRenderer::EnvironmentRenderer(const EnvironmentConfig& cfg)
 
 void EnvironmentRenderer::initialize() {
     initParticles(Vector3D::zero());
+    initStars();
+}
+
+void EnvironmentRenderer::initStars() {
+    starPositions.clear();
+    starBrightnesses.clear();
+    
+    for (int i = 0; i < config.starCount; ++i) {
+        // Random position on a sphere
+        float theta = GetRandomValue(0, 628) * 0.01f;
+        float phi = std::acos(1.0f - 2.0f * GetRandomValue(0, 1000) / 1000.0f);
+        
+        Vector3D pos(
+            std::sin(phi) * std::cos(theta),
+            std::cos(phi),
+            std::sin(phi) * std::sin(theta)
+        );
+        
+        // Only keep stars in upper hemisphere
+        if (pos.y > -0.1f) {
+            starPositions.push_back(pos * 800.0f);  // Far distance
+            starBrightnesses.push_back(0.3f + GetRandomValue(0, 70) / 100.0f);
+        }
+    }
 }
 
 void EnvironmentRenderer::initParticles(const Vector3D& center) {
@@ -80,19 +104,17 @@ void EnvironmentRenderer::renderSky(const FlightCamera& camera, float gameTime) 
     int screenWidth = GetScreenWidth();
     int screenHeight = GetScreenHeight();
     
-    // Gradient sky background
+    // Dark night sky gradient
     for (int y = 0; y < screenHeight; ++y) {
         float t = static_cast<float>(y) / screenHeight;
-        // Non-linear gradient for more dramatic sky
         t = t * t * (3.0f - 2.0f * t);
         Color lineColor = blendColors(config.skyColorZenith, config.skyColorHorizon, t);
         DrawLine(0, y, screenWidth, y, lineColor);
     }
-    
-    // Sun
-    Vector3D sunDir = config.sunDirection.normalized();
+}
+
+void EnvironmentRenderer::renderMoonAndStars(const FlightCamera& camera, float gameTime) {
     Vector3D camPos = camera.getPosition();
-    Vector3D sunPos = camPos + sunDir * 800.0f;
     
     BeginMode3D({
         {camPos.x, camPos.y, camPos.z},
@@ -103,13 +125,45 @@ void EnvironmentRenderer::renderSky(const FlightCamera& camera, float gameTime) 
     rlDisableDepthMask();
     rlDisableDepthTest();
     
-    // Layered sun glow
-    float sunPulse = 1.0f + std::sin(gameTime * 0.5f) * 0.05f;
-    DrawSphere({sunPos.x, sunPos.y, sunPos.z}, config.sunGlowSize * 2.0f * sunPulse, {255, 250, 235, 8});
-    DrawSphere({sunPos.x, sunPos.y, sunPos.z}, config.sunGlowSize * 1.5f * sunPulse, {255, 250, 240, 15});
-    DrawSphere({sunPos.x, sunPos.y, sunPos.z}, config.sunGlowSize * sunPulse, {255, 252, 245, 30});
-    DrawSphere({sunPos.x, sunPos.y, sunPos.z}, config.sunSize * 1.5f, {255, 253, 248, 80});
-    DrawSphere({sunPos.x, sunPos.y, sunPos.z}, config.sunSize, config.sunColor);
+    // === STARS ===
+    for (size_t i = 0; i < starPositions.size(); ++i) {
+        Vector3D starPos = camPos + starPositions[i];
+        float brightness = starBrightnesses[i];
+        
+        // Twinkling effect
+        float twinkle = std::sin(gameTime * (2.0f + i * 0.1f) + i * 0.5f);
+        twinkle = twinkle * 0.3f + 0.7f;
+        brightness *= twinkle * config.starBrightness;
+        
+        unsigned char alpha = (unsigned char)(brightness * 255);
+        float size = 0.8f + brightness * 1.2f;
+        
+        // Star core
+        DrawSphere({starPos.x, starPos.y, starPos.z}, size, {255, 255, 255, alpha});
+        // Subtle glow
+        DrawSphere({starPos.x, starPos.y, starPos.z}, size * 2.5f, {200, 220, 255, (unsigned char)(alpha / 5)});
+    }
+    
+    // === MOON ===
+    if (config.enableMoon) {
+        Vector3D moonDir = config.moonDirection.normalized();
+        Vector3D moonPos = camPos + moonDir * 700.0f;
+        
+        float moonPulse = 1.0f + std::sin(gameTime * 0.2f) * 0.02f;
+        
+        // Moon glow layers (soft ethereal glow)
+        DrawSphere({moonPos.x, moonPos.y, moonPos.z}, config.moonGlowSize * 3.0f * moonPulse, {180, 200, 255, 8});
+        DrawSphere({moonPos.x, moonPos.y, moonPos.z}, config.moonGlowSize * 2.0f * moonPulse, {200, 215, 255, 15});
+        DrawSphere({moonPos.x, moonPos.y, moonPos.z}, config.moonGlowSize * 1.3f * moonPulse, {210, 225, 255, 30});
+        DrawSphere({moonPos.x, moonPos.y, moonPos.z}, config.moonGlowSize * moonPulse, {220, 235, 255, 50});
+        
+        // Moon body
+        DrawSphere({moonPos.x, moonPos.y, moonPos.z}, config.moonSize * 1.2f, {230, 240, 255, 180});
+        DrawSphere({moonPos.x, moonPos.y, moonPos.z}, config.moonSize, config.moonColor);
+        
+        // Bright center
+        DrawSphere({moonPos.x, moonPos.y, moonPos.z}, config.moonSize * 0.7f, {240, 245, 255, 255});
+    }
     
     rlEnableDepthTest();
     rlEnableDepthMask();
